@@ -1098,11 +1098,11 @@ async def handle_form_submission(
     language: str,
     profile: UserProfile,
 ) -> None:
-    for field, raw_value in form_answers.items():
-        if field not in {item["field"] for item in ONBOARDING_FLOW}:
+    for field_name, raw_value in form_answers.items():
+        if field_name not in {item["field"] for item in ONBOARDING_FLOW}:
             continue
         try:
-            state.answers[field] = validate_onboarding_answer(field, raw_value)
+            state.answers[field_name] = validate_onboarding_answer(field_name, raw_value)
         except ValueError as exc:
             await messenger.send_text(phone, str(exc))
     required_fields = [item["field"] for item in ONBOARDING_FLOW]
