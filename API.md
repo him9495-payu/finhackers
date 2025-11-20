@@ -32,8 +32,8 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 
 ### Customer Support (Existing Borrower)
 1. User taps _Get support_ (button) or sends a support-intent message (e.g., “EMI issue”). The bot already knows from DynamoDB whether they hold an active PayU loan and adjusts tone and CTAs automatically.
-2. The bot surfaces button-based support categories (Pay EMI, Loan status, Talk to agent). Selecting a category responds with the appropriate KB answer or escalates to an agent.
-3. When the user needs something outside the options, `SupportAssistant` steps in to answer free-form queries; if confidence is low (<0.55), the bot:
+2. The bot surfaces button-based support categories (Pay EMI, Loan status, Talk to agent). Selecting a category routes the intent to Amazon Bedrock (seeded with PayU’s KB snippets) and returns the generated answer; “Talk to agent” skips straight to escalation.
+3. When the user needs something outside the options or types free-form text, the full question plus curated KB context is sent to the configured Bedrock LLM. If Bedrock is unavailable or confidence remains low (<0.55), the bot:
    - Acknowledges escalation in the user’s language.
    - Logs ticket metadata (question, timestamp, queue) against the DynamoDB profile.
    - Notifies operators via the configured `HUMAN_HANDOFF_QUEUE`.
@@ -52,7 +52,7 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 | `USER_TABLE_NAME` | Optional | DynamoDB table storing user profiles (key: `phone`). |
 | `AWS_REGION` | Optional | Region for DynamoDB/Bedrock (`ap-south-1` default). |
 | `INACTIVITY_MINUTES` | Optional | Minutes before drop-off reminders (default `30`). |
-| `BEDROCK_MODEL_ID` | Optional | Hook to an AWS Bedrock LLM for richer support. |
+| `BEDROCK_MODEL_ID` | Optional (recommended) | Amazon Bedrock model ID (e.g., `anthropic.claude-3-haiku-20240307`) used for answering support queries. |
 | `WHATSAPP_FLOW_ID` | Optional | WhatsApp Flow identifier for onboarding forms. |
 | `WHATSAPP_FLOW_TOKEN` | Optional | Token required by Flow submissions (auto-randomized if omitted). |
 | `HUMAN_HANDOFF_QUEUE` | Optional | Queue/topic name for agent escalations. |

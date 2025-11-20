@@ -714,6 +714,85 @@ class SupportAssistant:
                 best_answer = entry["a"].get(language) or entry["a"]["en"]
         return best_answer, best_score
 
+    def compose_context(self, language: str) -> str:
+        sections = []
+        for entry in self.knowledge_base:
+            question = entry["q"].get(language) or entry["q"]["en"]
+            answer = entry["a"].get(language) or entry["a"]["en"]
+            sections.append(f"Q: {question}\nA: {answer}")
+        return "\n\n".join(sections)
+
+
+class BedrockSupportResponder:
+    def __init__(self, model_id: Optional[str], region: str):
+        self.model_id = model_id
+        self.region = region
+        self._client = None
+        if model_id and boto3:
+            try:
+                self._client = boto3.client("bedrock-runtime", region_name=region)
+            except Exception as exc:  # pragma: no cover - network errors
+                logger.error("Failed to initialize Bedrock client: %s", exc)
+                self._client = None
+
+    @property
+    def enabled(self) -> bool:
+        return self._client is not None
+
+    def _build_prompt(self, question: str, language: str, context: str) -> str:
+        language_name = "English" if language == "en" else "Hindi"
+        instructions = (
+            "You are PayU Finance's bilingual support copilot. "
+            "Answer clearly and concisely using the provided knowledge base. "
+            f"Respond in {language_name}. "
+            "If the answer is missing, acknowledge lack of information and suggest connecting with a PayU agent."
+        )
+        return f"{instructions}\n\nKnowledge Base:\n{context}\n\nCustomer question:\n{question}\n\nAnswer:"
+
+    def _invoke(self, body: str):
+        return self._client.invoke_model(
+            modelId=self.model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=body,
+        )
+
+    async def answer(self, question: str, language: str, context: str) -> Optional[str]:
+        if not self.enabled:
+            return None
+
+        prompt = self._build_prompt(question, language, context)
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "max_tokens": 400,
+            "temperature": 0.3,
+        }
+        try:
+            response = await asyncio.to_thread(self._invoke, json.dumps(payload))
+            raw_body = response["body"].read()
+            data = json.loads(raw_body.decode("utf-8"))
+            if "output" in data:
+                # Some models return `output` with `text`
+                content = data["output"][0].get("content", [{}])
+                return content[0].get("text")
+            if "content" in data:
+                # Anthropic-compatible structure
+                content = data["content"]
+                if content and "text" in content[0]:
+                    return content[0]["text"]
+            if "results" in data:
+                return data["results"][0]["outputText"]
+        except Exception as exc:
+            logger.error("Bedrock response failed: %s", exc)
+        return None
+
 
 def similarity_score(a: str, b: str) -> float:
     # Simple token overlap score
@@ -725,6 +804,7 @@ def similarity_score(a: str, b: str) -> float:
 
 
 support_agent = SupportAssistant(SUPPORT_KB)
+bedrock_responder = BedrockSupportResponder(BEDROCK_MODEL_ID, AWS_REGION)
 
 
 # ---------------------------------------------------------------------------
@@ -866,8 +946,19 @@ async def handle_support(
     language: str,
     profile: UserProfile,
 ) -> None:
-    answer, confidence = await support_agent.answer(text, language)
     pack = get_language_pack(language)
+    context = support_agent.compose_context(language)
+    bedrock_answer = await bedrock_responder.answer(text, language, context)
+    if bedrock_answer:
+        await messenger.send_text(phone, bedrock_answer)
+        await messenger.send_text(phone, pack["support_closing"])
+        profile.metadata["last_support_query"] = text
+        user_store.save(profile)
+        state.awaiting_support_details = False
+        state.reset(keep_language=True)
+        return
+
+    answer, confidence = await support_agent.answer(text, language)
     if not answer or confidence < support_agent.threshold:
         await messenger.send_text(phone, pack["support_handoff"])
         await escalate_to_agent(phone, text, profile)
