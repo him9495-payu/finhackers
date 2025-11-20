@@ -924,6 +924,49 @@ class BedrockSupportResponder:
             logger.error("Bedrock response failed: %s", exc)
         return None
 
+    async def classify(self, question: str) -> Optional[str]:
+        if not self.enabled:
+            return None
+        instructions = (
+            "Classify the following post-disbursal customer message as one of "
+            "Query (informational question), Request (asks for an action such as sending documents), "
+            "or Complaint (expresses dissatisfaction). Respond with only one word: Query, Request, or Complaint."
+        )
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": f"{instructions}\n\nMessage:\n{question}"}],
+                }
+            ],
+            "max_tokens": 50,
+            "temperature": 0,
+        }
+        try:
+            response = await asyncio.to_thread(self._invoke, json.dumps(payload))
+            raw_body = response["body"].read()
+            data = json.loads(raw_body.decode("utf-8"))
+            text = None
+            if "output" in data:
+                text = data["output"][0].get("content", [{}])[0].get("text")
+            elif "content" in data:
+                content = data["content"]
+                if content and "text" in content[0]:
+                    text = content[0]["text"]
+            elif "results" in data:
+                text = data["results"][0]["outputText"]
+            if text:
+                normalized = text.strip().lower()
+                if "complaint" in normalized:
+                    return "Complaint"
+                if "request" in normalized:
+                    return "Request"
+                if "query" in normalized or "question" in normalized:
+                    return "Query"
+        except Exception as exc:
+            logger.error("Bedrock classification failed: %s", exc)
+        return None
+
 
 def similarity_score(a: str, b: str) -> float:
     # Simple token overlap score
@@ -936,6 +979,13 @@ def similarity_score(a: str, b: str) -> float:
 
 support_agent = SupportAssistant(SUPPORT_KB)
 bedrock_responder = BedrockSupportResponder(BEDROCK_MODEL_ID, AWS_REGION)
+
+
+async def classify_post_disbursal_category(question: str) -> str:
+    if not bedrock_responder.enabled:
+        return "Query"
+    label = await bedrock_responder.classify(question)
+    return label or "Query"
 
 
 # ---------------------------------------------------------------------------
@@ -1216,11 +1266,16 @@ async def handle_post_disbursal(phone: str, language: str, normalized_query: str
         "status": record.get("status"),
         "documents_url": record.get("documents_url"),
     }
+    category_label = await classify_post_disbursal_category(normalized_query)
     record_interaction(
         phone,
         "system",
         "post_disbursal_query",
-        {"query": normalized_query, "loan_reference": payload["reference_id"]},
+        {
+            "query": normalized_query,
+            "loan_reference": payload["reference_id"],
+            "classification": category_label,
+        },
     )
 
     if "balance" in normalized_query or "emi" in normalized_query:
@@ -1252,7 +1307,7 @@ async def handle_post_disbursal(phone: str, language: str, normalized_query: str
         phone,
         "outbound",
         "post_disbursal_response",
-        {"response": response, "query": normalized_query},
+        {"response": response, "query": normalized_query, "classification": category_label},
     )
 
 

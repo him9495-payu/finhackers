@@ -32,11 +32,12 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 
 ### Customer Support (Existing Borrower)
 1. User taps _Get support_ (button) or sends a support-intent message (e.g., “EMI issue”). The bot already knows from DynamoDB whether they hold an active PayU loan and adjusts tone and CTAs automatically.
-2. The bot surfaces button-based support categories (Pay EMI, Loan status, Talk to agent). Selecting a category routes the intent to Amazon Bedrock (seeded with PayU’s KB snippets) and returns the generated answer; “Talk to agent” skips straight to escalation.
-3. When the user needs something outside the options or types free-form text, the full question plus curated KB context is sent to the configured Bedrock LLM. If Bedrock is unavailable or confidence remains low (<0.55), the bot:
+2. The bot surfaces button-based support categories (Pay EMI, Loan status, documents, change EMIs, talk to agent). Selecting a category routes the intent to Amazon Bedrock (seeded with PayU’s KB snippets plus any `loan_records` data) and returns the generated answer; “Talk to agent” skips straight to escalation.
+3. When the user needs something outside the options or types free-form text, the full question plus curated KB context and loan metadata is sent to the configured Bedrock LLM. If Bedrock is unavailable or confidence remains low (<0.55), the bot:
    - Acknowledges escalation in the user’s language.
    - Logs ticket metadata (question, timestamp, queue) against the DynamoDB profile.
    - Notifies operators via the configured `HUMAN_HANDOFF_QUEUE`.
+4. Every post-disbursal query is also classified by Bedrock into **Query / Request / Complaint** and saved in `interaction_events` for downstream triage and analytics.
 
 ---
 
@@ -54,6 +55,7 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 | `INACTIVITY_MINUTES` | Optional | Minutes before drop-off reminders (default `30`). |
 | `BEDROCK_MODEL_ID` | Optional (recommended) | Amazon Bedrock model ID (e.g., `anthropic.claude-3-haiku-20240307`) used for answering support queries. |
 | `INTERACTION_TABLE_NAME` | Optional | DynamoDB table storing every inbound/outbound interaction for auditing and segmentation. |
+| `LOAN_TABLE_NAME` | Optional (recommended) | DynamoDB table containing disbursal records (`phone` as key) used for post-loan servicing answers. |
 | `WHATSAPP_FLOW_ID` | Optional | WhatsApp Flow identifier for onboarding forms. |
 | `WHATSAPP_FLOW_TOKEN` | Optional | Token required by Flow submissions (auto-randomized if omitted). |
 | `HUMAN_HANDOFF_QUEUE` | Optional | Queue/topic name for agent escalations. |
@@ -96,6 +98,10 @@ Expose the server via `ngrok http 8000` (or similar) and register the HTTPS endp
   - Partition key: `phone`, sort key: `timestamp` (ISO string generated per event)
   - Attributes: `direction` (`inbound`, `outbound`, `system`), `category` (e.g., `whatsapp_message`, `loan_decision`, `support_answer`), `payload` (arbitrary JSON storing message text, Flow fields, decision offers, etc.)
   - Captures every inbound WhatsApp message, Flow submission, system action, and outbound response so journeys can be replayed, audited, or exported to analytics.
+- **`loan_records`**
+  - Partition key: `phone`
+  - Attributes: `reference_id`, `offer_amount`, `apr`, `max_term_months`, `status`, `next_emi_due`, `documents_url`, `emi_schedule`, and repayment flags.
+  - Queried whenever borrowers ask for balance, EMI details, statements, documents, repayment changes, etc.; the same data is injected into Bedrock prompts to personalize both answers and Query/Request/Complaint classifications.
 
 ---
 
