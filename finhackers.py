@@ -470,7 +470,7 @@ class DecisionResult(BaseModel):
 @dataclass
 class UserProfile:
     phone: str
-    language: str = DEFAULT_LANGUAGE
+    language: Optional[str] = None
     is_existing: bool = False
     status: str = "prospect"
     stage: str = "discovery"
@@ -500,7 +500,7 @@ class UserProfile:
     def from_item(cls, item: Dict[str, Any]) -> "UserProfile":
         return cls(
             phone=item["phone"],
-            language=item.get("language", DEFAULT_LANGUAGE),
+            language=item.get("language"),
             is_existing=item.get("is_existing", False),
             status=item.get("status", "prospect"),
             stage=item.get("stage", "discovery"),
