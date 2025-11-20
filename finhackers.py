@@ -63,6 +63,7 @@ BACKEND_DECISION_URL = os.getenv("BACKEND_DECISION_URL")
 BACKEND_API_KEY = os.getenv("BACKEND_DECISION_API_KEY")
 USER_TABLE_NAME = os.getenv("USER_TABLE_NAME")
 INTERACTION_TABLE_NAME = os.getenv("INTERACTION_TABLE_NAME")
+LOAN_TABLE_NAME = os.getenv("LOAN_TABLE_NAME")
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
 INACTIVITY_MINUTES = int(os.getenv("INACTIVITY_MINUTES", "30"))
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID")
@@ -90,6 +91,8 @@ LANGUAGE_PACKS: Dict[str, Dict[str, str]] = {
         "support_menu_intro": "Pick a support topic:",
         "support_btn_payment": "Pay EMI",
         "support_btn_status": "Loan status",
+        "support_btn_docs": "Documents",
+        "support_btn_repayment": "Change EMIs",
         "support_btn_agent": "Talk to agent",
         "support_text_hint": "Need something else? Type your question.",
         "support_handoff": "I'll connect you with a PayU expert so you don't have to wait.",
@@ -134,6 +137,8 @@ LANGUAGE_PACKS: Dict[str, Dict[str, str]] = {
         "support_menu_intro": "किस विषय में मदद चाहिए?",
         "support_btn_payment": "EMI जमा",
         "support_btn_status": "लोन स्टेटस",
+        "support_btn_docs": "डॉक्यूमेंट्स",
+        "support_btn_repayment": "EMI बदलें",
         "support_btn_agent": "एजेंट से बात",
         "support_text_hint": "कुछ और चाहिए? अपना सवाल लिखें।",
         "support_handoff": "मैं आपको PayU विशेषज्ञ से जोड़ रहा हूँ ताकि आपको सही मदद मिल सके।",
@@ -196,6 +201,18 @@ INTENT_KEYWORDS = {
         "track",
         "agent",
     },
+    "post_disbursal": {
+        "balance",
+        "emi",
+        "statement",
+        "loan status",
+        "loan details",
+        "loan doc",
+        "document",
+        "repayment",
+        "pay",
+        "disbursal",
+    },
 }
 
 SUPPORT_KB = [
@@ -219,11 +236,33 @@ SUPPORT_KB = [
             "hi": "आप PayU Finance ऐप में 'My Loans' सेक्शन में अपना स्टेटस देख सकते हैं। मैं आपको एजेंट से भी जोड़ सकता हूँ।",
         },
     },
+    {
+        "q": {
+            "en": "How do I download my loan statement?",
+            "hi": "मैं अपना लोन स्टेटमेंट कैसे डाउनलोड करूँ?",
+        },
+        "a": {
+            "en": "You can download loan statements and documents inside the PayU Finance app under My Loans > Documents. I can also email them to you if needed.",
+            "hi": "आप PayU Finance ऐप में My Loans > Documents सेक्शन से स्टेटमेंट और डॉक्युमेंट्स डाउनलोड कर सकते हैं। आवश्यकता हो तो मैं इन्हें ईमेल भी कर सकता हूँ।",
+        },
+    },
+    {
+        "q": {
+            "en": "Can I change my repayment date?",
+            "hi": "क्या मैं अपनी EMI तारीख बदल सकता हूँ?",
+        },
+        "a": {
+            "en": "Repayment dates can be changed once every 6 months via the app. Go to My Loans > Repayment Options or request a PayU specialist to assist.",
+            "hi": "आप EMI तारीख को हर 6 महीने में एक बार बदल सकते हैं। PayU Finance ऐप में My Loans > Repayment Options पर जाएँ या विशेषज्ञ से मदद लें।",
+        },
+    },
 ]
 
 SUPPORT_SHORTCUTS = {
     "support_payment": 0,
     "support_status": 1,
+    "support_docs": 2,
+    "support_repayment_change": 3,
 }
 
 FORM_FIELD_MAP = {
@@ -534,6 +573,66 @@ class UserProfileStore:
         self._fallback[profile.phone] = profile
 
 
+class LoanRecordStore:
+    """Stores disbursal-level data for post-loan servicing."""
+
+    def __init__(self, table_name: Optional[str], region: str):
+        self.table_name = table_name
+        self.region = region
+        self._table = None
+        self._fallback: Dict[str, Dict[str, Any]] = {}
+        if table_name and boto3:
+            resource = boto3.resource("dynamodb", region_name=region)
+            self._table = resource.Table(table_name)
+
+    def upsert_from_decision(
+        self,
+        phone: str,
+        decision: DecisionResult,
+        application: LoanApplication,
+    ) -> None:
+        record = {
+            "phone": phone,
+            "reference_id": decision.reference_id,
+            "offer_amount": decision.offer_amount,
+            "apr": decision.apr,
+            "max_term_months": decision.max_term_months,
+            "status": "approved" if decision.approved else "declined",
+            "purpose": application.purpose,
+            "requested_amount": application.requested_amount,
+            "monthly_income": application.monthly_income,
+            "employment_status": application.employment_status,
+            "last_updated": iso_timestamp(),
+            "next_emi_due": application.monthly_income * 0.4 if decision.approved else None,
+            "documents_url": None,
+            "emi_schedule": [],
+        }
+        if not decision.approved:
+            record["reason"] = decision.reason
+        self._write_record(record)
+
+    def _write_record(self, record: Dict[str, Any]) -> None:
+        if self._table:
+            try:
+                self._table.put_item(Item=record)
+                return
+            except Exception as exc:  # pragma: no cover
+                logger.error("Dynamo loan_record put_item failed: %s", exc)
+        self._fallback[record["phone"]] = record
+
+    def get_record(self, phone: str) -> Optional[Dict[str, Any]]:
+        if self._table:
+            try:
+                response = self._table.get_item(Key={"phone": phone})
+                item = response.get("Item")
+                if item:
+                    return item
+            except Exception as exc:  # pragma: no cover
+                logger.error("Dynamo loan_record get_item failed: %s", exc)
+        return self._fallback.get(phone)
+
+
+
 class InteractionStore:
     """Persist every inbound/outbound interaction for auditing and analytics."""
 
@@ -566,6 +665,7 @@ class InteractionStore:
 conversation_store = ConversationStore()
 user_store = UserProfileStore(USER_TABLE_NAME, AWS_REGION)
 interaction_store = InteractionStore(INTERACTION_TABLE_NAME, AWS_REGION)
+loan_store = LoanRecordStore(LOAN_TABLE_NAME, AWS_REGION)
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +1079,7 @@ async def finalize_onboarding(
     profile.status = "approved" if decision.approved else "declined"
     profile.metadata["last_application_id"] = decision.reference_id
     user_store.save(profile)
+    loan_store.upsert_from_decision(profile.phone, decision, application)
 
     if decision.approved:
         message = pack["decision_approved"].format(
@@ -1017,7 +1118,20 @@ async def handle_support(
 ) -> None:
     pack = get_language_pack(language)
     context = support_agent.compose_context(language)
-    bedrock_answer = await bedrock_responder.answer(text, language, context)
+    loan_context = loan_store.get_record(phone)
+    combined_context = context
+    if loan_context:
+        loan_snippet = (
+            f"\n\nLoan details:\n"
+            f"- Reference ID: {loan_context.get('reference_id')}\n"
+            f"- Status: {loan_context.get('status')}\n"
+            f"- Amount: ₹{loan_context.get('offer_amount')}\n"
+            f"- APR: {loan_context.get('apr')}%\n"
+            f"- Tenure: {loan_context.get('max_term_months')} months\n"
+            f"- Next EMI: ₹{loan_context.get('next_emi_due')}\n"
+        )
+        combined_context = f"{context}{loan_snippet}"
+    bedrock_answer = await bedrock_responder.answer(text, language, combined_context)
     if bedrock_answer:
         await messenger.send_text(phone, bedrock_answer)
         await messenger.send_text(phone, pack["support_closing"])
@@ -1082,6 +1196,63 @@ async def handle_support_shortcut(
         "outbound",
         "support_answer",
         {"source": "button_shortcut", "shortcut_id": shortcut_id},
+    )
+
+
+async def handle_post_disbursal(phone: str, language: str, normalized_query: str) -> None:
+    record = loan_store.get_record(phone)
+    pack = get_language_pack(language)
+    if not record:
+        await messenger.send_text(phone, pack["support_handoff"])
+        await escalate_to_agent(phone, "No loan record found", user_store.get(phone))
+        return
+
+    payload = {
+        "reference_id": record.get("reference_id"),
+        "offer_amount": record.get("offer_amount"),
+        "apr": record.get("apr"),
+        "max_term_months": record.get("max_term_months"),
+        "next_emi_due": record.get("next_emi_due"),
+        "status": record.get("status"),
+        "documents_url": record.get("documents_url"),
+    }
+    record_interaction(
+        phone,
+        "system",
+        "post_disbursal_query",
+        {"query": normalized_query, "loan_reference": payload["reference_id"]},
+    )
+
+    if "balance" in normalized_query or "emi" in normalized_query:
+        response = (
+            f"Loan reference {payload['reference_id']} is currently {payload['status']}. "
+            f"Outstanding amount is approx ₹{payload['offer_amount']:.2f} with APR {payload['apr']}% "
+            f"for up to {payload['max_term_months']} months. "
+            f"Your next EMI is around ₹{payload['next_emi_due']:.2f}."
+        )
+    elif "status" in normalized_query or "loan details" in normalized_query:
+        response = (
+            f"Loan reference {payload['reference_id']} is {payload['status']}. "
+            f"Approved amount ₹{payload['offer_amount']:.2f} with APR {payload['apr']}% "
+            f"over {payload['max_term_months']} months."
+        )
+    elif "doc" in normalized_query or "statement" in normalized_query:
+        doc_link = payload.get("documents_url") or "the PayU Finance app under My Loans > Documents"
+        response = f"You can download your documents from {doc_link}."
+    elif "repayment" in normalized_query or "pay" in normalized_query:
+        response = (
+            "You can change repayment options or prepay via My Loans > Repayment Options in the PayU Finance app. "
+            "Let me know if you'd like a specialist to help."
+        )
+    else:
+        response = pack["support_closing"]
+
+    await messenger.send_text(phone, response)
+    record_interaction(
+        phone,
+        "outbound",
+        "post_disbursal_response",
+        {"response": response, "query": normalized_query},
     )
 
 
@@ -1163,6 +1334,8 @@ async def prompt_support_menu(phone: str, language: str) -> None:
         [
             ("support_payment", pack["support_btn_payment"]),
             ("support_status", pack["support_btn_status"]),
+            ("support_docs", pack["support_btn_docs"]),
+            ("support_repayment_change", pack["support_btn_repayment"]),
             ("support_btn_agent", pack["support_btn_agent"]),
         ],
     )
@@ -1357,6 +1530,9 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             )
             await prompt_support_menu(phone, language)
             return
+        if intent == "post_disbursal" and loan_store.get_record(phone):
+            await handle_post_disbursal(phone, language, normalized)
+            return
         await prompt_intent(phone, language, profile.is_existing)
         return
 
@@ -1386,6 +1562,9 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         if normalized in {"support", "help"}:
             await prompt_support_menu(phone, language)
             state.awaiting_support_details = True
+            return
+        if loan_store.get_record(phone) and normalized in {"balance", "emi", "statement", "docs", "document", "repayment"}:
+            await handle_post_disbursal(phone, language, normalized)
             return
         state.awaiting_support_details = True
         await handle_support(phone, text, state, language, profile)
