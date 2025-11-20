@@ -1040,14 +1040,16 @@ async def classify_post_disbursal_category(question: str) -> str:
 # Chatbot orchestration
 # ---------------------------------------------------------------------------
 async def prompt_language(phone: str) -> None:
-    pack = get_language_pack("en")
-    await messenger.send_text(phone, pack["welcome"])
+    english_pack = get_language_pack("en")
+    hindi_pack = get_language_pack("hi")
+    await messenger.send_text(phone, english_pack["welcome"])
+    await messenger.send_text(phone, hindi_pack["welcome"])
     await messenger.send_interactive_buttons(
         phone,
-        pack["language_prompt"],
+        english_pack["language_prompt"],
         [
-            ("lang_en", pack["language_option_en"]),
-            ("lang_hi", pack["language_option_hi"]),
+            ("lang_en", english_pack["language_option_en"]),
+            ("lang_hi", english_pack["language_option_hi"]),
         ],
     )
 
