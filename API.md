@@ -6,7 +6,7 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 
 ## System Architecture
 - **FastAPI surface (`app`)**: Implements `GET /webhook` (Meta verification), `POST /webhook` (event ingestion), and `GET /healthz`. The same app can be hosted on EC2/Fargate or inside AWS Lambda via Mangum (`lambda_handler`).
-- **Conversation brain**: `ConversationStore`, `ConversationState`, and language packs route users through language selection, existing/new inference, onboarding, and support. Inactivity handling automatically nudges drop-offs.
+- **Conversation brain**: `ConversationStore`, `ConversationState`, and language packs drive language selection, infer customer status from DynamoDB (no customer-facing questions), and steer users via WhatsApp buttons/flows rather than free text.
 - **Persistent user context**: `UserProfileStore` persists structured data (language, stage, status, metadata) to DynamoDB; a local fallback keeps the bot functional when AWS resources are unavailable.
 - **Meta Cloud integration**: `MetaWhatsAppClient` sends text, button-based quick replies, and WhatsApp Flow forms (interactive loan intake). Dry-run logging is used when credentials are absent.
 - **Decisioning & support**:
@@ -17,9 +17,9 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 
 ## Key Journeys
 ### Onboarding (New or Returning Borrower)
-1. **First touch** – chatbot greets the user, requests language preference (English/Hindi) using WhatsApp buttons, and infers whether the customer is new or existing (profile lookup + natural-language cues).
-2. **Journey selection** – depending on their status, the bot offers options such as _Apply for a loan_ or _Get help/support_.
-3. **WhatsApp Flow form** – when `WHATSAPP_FLOW_ID` is configured, the bot dispatches a native WhatsApp Flow form to capture user data. A text-based fallback mirrors the same prompts:
+1. **First touch** – chatbot greets the user, requests language preference (English/Hindi) using WhatsApp buttons, and determines whether the customer is new or existing purely from DynamoDB history (no question is asked in chat).
+2. **Journey selection** – once language is set, the bot presents button-based options such as _Apply for a loan_ or _Get support_, eliminating manual typing wherever possible.
+3. **WhatsApp Flow form** – when `WHATSAPP_FLOW_ID` is configured, the bot dispatches a native WhatsApp Flow form to capture user data. The form is the only channel for collecting application details; if it closes, the bot re-opens the same flow via buttons instead of reverting to inline questions:
    - Full name (PAN)
    - Age (18–75)
    - Employment status
@@ -27,15 +27,15 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
    - Requested amount (₹, > 0)
    - Loan purpose
    - Consent to bureau check
-4. **Decision + messaging** – data is persisted to DynamoDB, converted to `LoanApplication`, and evaluated by `CreditDecisionClient`. Users receive localized approval or rejection narratives with reference IDs and next-step CTAs (e.g., reply `ACCEPT` or `SUPPORT`).
-5. **Drop-off handling** – inactivity (default 30 min) triggers a reminder (“Reply CONTINUE to resume”). Returning customers resume in the correct language and stage.
+4. **Decision + messaging** – data is persisted to DynamoDB, converted to `LoanApplication`, and evaluated by `CreditDecisionClient`. Users receive localized approval or rejection narratives with reference IDs and interactive buttons (Accept offer / Need support) so they never have to type follow-up commands.
+5. **Drop-off handling** – inactivity (default 30 min) triggers a reminder (“Tap Apply to continue or Support for help”). Returning customers resume in the correct language and stage.
 
 ### Customer Support (Existing Borrower)
-1. User selects _Get help/support_ or sends a support-intent message (e.g., “EMI issue”).
-2. `SupportAssistant` searches a bilingual knowledge base (swap with an AWS Bedrock LLM when fine-tuned material is ready).
-3. When confidence is below threshold (0.55 by default), the bot:
+1. User taps _Get support_ (button) or sends a support-intent message (e.g., “EMI issue”). The bot already knows from DynamoDB whether they hold an active PayU loan and adjusts tone and CTAs automatically.
+2. The bot surfaces button-based support categories (Pay EMI, Loan status, Talk to agent). Selecting a category responds with the appropriate KB answer or escalates to an agent.
+3. When the user needs something outside the options, `SupportAssistant` steps in to answer free-form queries; if confidence is low (<0.55), the bot:
    - Acknowledges escalation in the user’s language.
-   - Logs the ticket metadata (question, timestamp, queue) against the DynamoDB profile.
+   - Logs ticket metadata (question, timestamp, queue) against the DynamoDB profile.
    - Notifies operators via the configured `HUMAN_HANDOFF_QUEUE`.
 
 ---

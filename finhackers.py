@@ -80,74 +80,86 @@ LANGUAGE_PACKS: Dict[str, Dict[str, str]] = {
         "language_prompt": "Please choose your preferred language.\n1️⃣ English\n2️⃣ हिंदी (Hindi)",
         "language_option_en": "English",
         "language_option_hi": "हिंदी",
-        "existing_probe": "Are you already a PayU Finance customer?",
-        "existing_yes": "Yes, I have a PayU loan",
-        "existing_no": "No, I'm new",
-        "intent_prompt_existing": "How can I help you today?",
-        "intent_prompt_new": "Thanks! What would you like to do today?",
+        "intent_prompt_existing": "What would you like to do today?",
+        "intent_prompt_new": "Welcome! What would you like to do today?",
         "intent_apply": "Apply for a loan",
-        "intent_support": "Get help / support",
-        "support_prompt_existing": "Please describe the issue or question about your current PayU Finance loan.",
-        "support_prompt_new": "Happy to help! Share your question or type APPLY to begin a new loan.",
+        "intent_support": "Get support",
+        "support_prompt_existing": "Tell me what kind of help you need.",
+        "support_prompt_new": "Need help before applying? Let me know.",
+        "support_menu_intro": "Pick a support topic:",
+        "support_btn_payment": "Pay EMI",
+        "support_btn_status": "Loan status",
+        "support_btn_agent": "Talk to agent",
+        "support_text_hint": "Need something else? Type your question.",
         "support_handoff": "I'll connect you with a PayU expert so you don't have to wait.",
-        "support_closing": "Glad to help! Reply SUPPORT anytime if you need anything else.",
+        "support_closing": "Glad to help! Tap Support anytime if you need anything else.",
         "support_escalation_ack": "A PayU specialist has been notified. You will hear from us shortly.",
-        "onboarding_intro": "Great, let's begin your personal loan journey. This takes under 2 minutes.",
-        "flow_sent": "I've shared a quick WhatsApp form. If it doesn't open, just reply with the details here.",
+        "onboarding_intro": "Great! I just shared a secure WhatsApp form so you can submit your details.",
+        "flow_sent": "Tap the form button to continue. If it closes, you can reopen it below.",
+        "flow_button_label": "Open form",
+        "support_button_label": "Support",
         "dropoff": "It looks like we got disconnected earlier.",
-        "resume_prompt": "Reply CONTINUE to resume or APPLY to start again.",
+        "resume_prompt": "Tap Apply to continue your loan or Support if you need help.",
         "decision_submit": "Submitting your details for a quick eligibility check...",
         "decision_approved": (
             "🎉 You're approved!\n"
             "Amount: ₹{amount:,.2f}\nAPR: {apr:.2f}%\nTenure: up to {term} months\n"
-            "Reference: {ref}\nReply ACCEPT to proceed or SUPPORT for help."
+            "Reference: {ref}"
         ),
         "decision_rejected": (
             "I'm sorry, we couldn't approve the loan right now because {reason}. "
-            "Reply SUPPORT if you'd like to talk to an expert."
+            "Tap Support if you'd like to talk to an expert."
         ),
+        "post_accept_label": "Accept offer",
+        "post_support_label": "Need support",
+        "accept_ack": "Great! A PayU specialist will share the loan documents shortly.",
         "fallback_intent": "Please let me know if you want to apply for a loan or need support.",
-        "invalid_language": "Please reply with 1 for English or 2 for हिंदी.",
-        "invalid_existing_choice": "Please pick an option so I know if you are new or existing.",
-        "invalid_intent_choice": "Please choose one of the options so I can guide you.",
+        "invalid_language": "Please tap English or हिंदी.",
+        "invalid_intent_choice": "Please pick one of the options so I can guide you.",
         "ask_more_help": "Need anything else right now?",
         "text_only_warning": "I currently support text responses only. Please reply using text.",
     },
     "hi": {
         "welcome": "👋 पेयू फाइनेंस से नमस्ते! मैं आपका पर्सनल लोन सहायक हूँ।",
-        "language_prompt": "कृपया अपनी पसंदीदा भाषा चुनें।\n1️⃣ English\n2️⃣ हिंदी (Hindi)",
+        "language_prompt": "कृपया अपनी भाषा चुनें।\n1️⃣ English\n2️⃣ हिंदी (Hindi)",
         "language_option_en": "English",
         "language_option_hi": "हिंदी",
-        "existing_probe": "क्या आप पहले से PayU Finance ग्राहक हैं?",
-        "existing_yes": "हाँ, मेरे पास PayU का लोन है",
-        "existing_no": "नहीं, मैं नया हूँ",
-        "intent_prompt_existing": "आज मैं आपकी कैसे मदद कर सकता हूँ?",
-        "intent_prompt_new": "धन्यवाद! आप आज क्या करना चाहेंगे?",
-        "intent_apply": "लोन के लिए आवेदन करें",
-        "intent_support": "सपोर्ट / मदद चाहिए",
-        "support_prompt_existing": "कृपया अपने मौजूदा PayU लोन से जुड़ा सवाल लिखें।",
-        "support_prompt_new": "मैं मदद के लिए तैयार हूँ! अपना सवाल लिखें या नया आवेदन शुरू करने के लिए APPLY लिखें।",
+        "intent_prompt_existing": "आज आप क्या करना चाहेंगे?",
+        "intent_prompt_new": "स्वागत है! आप आज क्या करना चाहेंगे?",
+        "intent_apply": "लोन के लिए आवेदन",
+        "intent_support": "सपोर्ट / मदद",
+        "support_prompt_existing": "कृपया बताएँ आपको किस तरह की मदद चाहिए।",
+        "support_prompt_new": "आवेदन से पहले कोई सवाल है? मुझे बताएँ।",
+        "support_menu_intro": "किस विषय में मदद चाहिए?",
+        "support_btn_payment": "EMI जमा",
+        "support_btn_status": "लोन स्टेटस",
+        "support_btn_agent": "एजेंट से बात",
+        "support_text_hint": "कुछ और चाहिए? अपना सवाल लिखें।",
         "support_handoff": "मैं आपको PayU विशेषज्ञ से जोड़ रहा हूँ ताकि आपको सही मदद मिल सके।",
-        "support_closing": "मदद करके खुशी हुई! किसी भी समय SUPPORT लिखें।",
-        "support_escalation_ack": "PayU विशेषज्ञ को सूचित कर दिया गया है। जल्द ही आपसे संपर्क किया जाएगा।",
-        "onboarding_intro": "बहुत बढ़िया, चलिए आपकी पर्सनल लोन यात्रा शुरू करें। यह 2 मिनट से कम लेता है।",
-        "flow_sent": "मैंने एक WhatsApp फॉर्म भेजा है। यदि वह नहीं खुलता, तो यहाँ विवरण लिख दें।",
-        "dropoff": "लगता है पिछली बार हमारी बात अधूरी रह गई।",
-        "resume_prompt": "जारी रखने के लिए CONTINUE लिखें या दोबारा शुरू करने के लिए APPLY लिखें।",
+        "support_closing": "मदद करके खुशी हुई! ज़रूरत हो तो सपोर्ट दबाएँ।",
+        "support_escalation_ack": "PayU विशेषज्ञ को सूचित कर दिया गया है। जल्द ही आपसे संपर्क होगा।",
+        "onboarding_intro": "बहुत बढ़िया! मैंने अभी एक सुरक्षित WhatsApp फॉर्म भेजा है, कृपया उसे भरें।",
+        "flow_sent": "फॉर्म खोलने के लिए नीचे बटन दबाएँ। बंद होने पर भी यहाँ से दोबारा खोल सकते हैं।",
+        "flow_button_label": "फॉर्म खोलें",
+        "support_button_label": "सपोर्ट",
+        "dropoff": "लगता है पिछली बार बात अधूरी रह गई।",
+        "resume_prompt": "आगे बढ़ने के लिए APPLY दबाएँ या मदद के लिए SUPPORT दबाएँ।",
         "decision_submit": "आपकी जानकारी तेज़ अनुमोदन जांच के लिए भेज रहा हूँ...",
         "decision_approved": (
             "🎉 आपका लोन मंज़ूर हो गया!\n"
             "राशि: ₹{amount:,.2f}\nएपीआर: {apr:.2f}%\nअवधि: अधिकतम {term} महीने\n"
-            "संदर्भ: {ref}\nआगे बढ़ने के लिए ACCEPT या मदद के लिए SUPPORT लिखें।"
+            "संदर्भ: {ref}"
         ),
         "decision_rejected": (
-            "क्षमा करें, हम अभी लोन स्वीकृत नहीं कर सके क्योंकि {reason}। सहायता के लिए SUPPORT लिखें।"
+            "क्षमा करें, हम अभी लोन स्वीकृत नहीं कर सके क्योंकि {reason}। सहायता के लिए सपोर्ट दबाएँ।"
         ),
-        "fallback_intent": "कृपया बताएं कि आप लोन के लिए आवेदन करना चाहते हैं या मदद चाहिए।",
-        "invalid_language": "कृपया 1 (English) या 2 (हिंदी) लिखें।",
-        "invalid_existing_choice": "कृपया बताएँ कि आप नए हैं या मौजूदा ग्राहक।",
-        "invalid_intent_choice": "कृपया किसी एक विकल्प का चयन करें।",
-        "ask_more_help": "क्या आपको अभी और किसी चीज़ की ज़रूरत है?",
+        "post_accept_label": "ऑफ़र स्वीकारें",
+        "post_support_label": "सपोर्ट चाहिए",
+        "accept_ack": "बहुत बढ़िया! PayU विशेषज्ञ जल्द ही दस्तावेज़ साझा करेंगे।",
+        "fallback_intent": "कृपया बताएँ कि आप लोन लेना चाहते हैं या मदद चाहिए।",
+        "invalid_language": "कृपया English या हिंदी चुनें।",
+        "invalid_intent_choice": "कृपया उपलब्ध विकल्पों में से किसी एक को चुनें।",
+        "ask_more_help": "क्या आपको और किसी चीज़ की ज़रूरत है?",
         "text_only_warning": "फिलहाल मैं केवल टेक्स्ट संदेश पढ़ सकता हूँ। कृपया टेक्स्ट में जवाब दें।",
     },
 }
@@ -207,6 +219,11 @@ SUPPORT_KB = [
         },
     },
 ]
+
+SUPPORT_SHORTCUTS = {
+    "support_payment": 0,
+    "support_status": 1,
+}
 
 FORM_FIELD_MAP = {
     "full_name": "full_name",
@@ -449,20 +466,18 @@ class ConversationState:
     language: Optional[str] = None
     journey: Optional[str] = None
     is_existing: Optional[bool] = None
-    step_index: int = 0
     answers: Dict[str, Any] = field(default_factory=dict)
     awaiting_support_details: bool = False
-    last_prompt: Optional[str] = None
+    awaiting_flow_completion: bool = False
 
     def reset(self, keep_language: bool = True):
         lang = self.language if keep_language else None
         self.language = lang
         self.journey = None
         self.is_existing = None
-        self.step_index = 0
         self.answers.clear()
         self.awaiting_support_details = False
-        self.last_prompt = None
+        self.awaiting_flow_completion = False
 
 
 class ConversationStore:
@@ -728,18 +743,6 @@ async def prompt_language(phone: str) -> None:
     )
 
 
-async def prompt_existing(phone: str, language: str) -> None:
-    pack = get_language_pack(language)
-    await messenger.send_interactive_buttons(
-        phone,
-        pack["existing_probe"],
-        [
-            ("existing_yes", pack["existing_yes"]),
-            ("existing_no", pack["existing_no"]),
-        ],
-    )
-
-
 async def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
     pack = get_language_pack(language)
     prompt_key = "intent_prompt_existing" if is_existing else "intent_prompt_new"
@@ -755,18 +758,11 @@ async def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
 
 async def start_onboarding(phone: str, state: ConversationState, language: str) -> None:
     state.journey = "onboarding"
-    state.step_index = 0
     state.answers.clear()
+    state.awaiting_flow_completion = True
     pack = get_language_pack(language)
     await messenger.send_text(phone, pack["onboarding_intro"])
-    if WHATSAPP_FLOW_ID:
-        try:
-            await messenger.send_flow(phone, language)
-            await messenger.send_text(phone, pack["flow_sent"])
-        except Exception as exc:  # pragma: no cover - flow failures
-            logger.warning("Failed to send WhatsApp flow: %s", exc)
-    prompt = get_onboarding_prompt(ONBOARDING_FLOW[0]["field"], language)
-    await messenger.send_text(phone, prompt)
+    await prompt_loan_flow(phone, language)
 
 
 def validate_onboarding_answer(field: str, raw_value: Any) -> Any:
@@ -790,32 +786,6 @@ def validate_onboarding_answer(field: str, raw_value: Any) -> Any:
     return str(raw_value).strip()
 
 
-async def handle_onboarding_step(
-    phone: str,
-    text: str,
-    state: ConversationState,
-    language: str,
-    profile: UserProfile,
-) -> None:
-    if state.step_index >= len(ONBOARDING_FLOW):
-        await finalize_onboarding(phone, state, language, profile)
-        return
-    field_name = ONBOARDING_FLOW[state.step_index]["field"]
-    try:
-        processed = validate_onboarding_answer(field_name, text)
-    except ValueError as exc:
-        await messenger.send_text(phone, str(exc))
-        return
-
-    state.answers[field_name] = processed
-    state.step_index += 1
-    if state.step_index >= len(ONBOARDING_FLOW):
-        await finalize_onboarding(phone, state, language, profile)
-    else:
-        next_field = ONBOARDING_FLOW[state.step_index]["field"]
-        await messenger.send_text(phone, get_onboarding_prompt(next_field, language))
-
-
 async def handle_form_submission(
     phone: str,
     form_answers: Dict[str, Any],
@@ -830,13 +800,15 @@ async def handle_form_submission(
             state.answers[field] = validate_onboarding_answer(field, raw_value)
         except ValueError as exc:
             await messenger.send_text(phone, str(exc))
-    completed_fields = [item["field"] for item in ONBOARDING_FLOW]
-    state.step_index = sum(1 for field in completed_fields if field in state.answers)
-    if all(field in state.answers for field in completed_fields):
+    required_fields = [item["field"] for item in ONBOARDING_FLOW]
+    if all(field in state.answers for field in required_fields):
         await finalize_onboarding(phone, state, language, profile)
-    else:
-        next_field = ONBOARDING_FLOW[state.step_index]["field"]
-        await messenger.send_text(phone, get_onboarding_prompt(next_field, language))
+        return
+
+    missing = ", ".join(field for field in required_fields if field not in state.answers)
+    logger.info("Form submission missing fields [%s] for %s", missing, phone)
+    await messenger.send_text(phone, "It looks like we still need a few details. Please reopen the form.")
+    await prompt_loan_flow(phone, language)
 
 
 async def finalize_onboarding(
@@ -858,7 +830,7 @@ async def finalize_onboarding(
         )
     except KeyError as exc:
         logger.error("Missing field before finalization: %s", exc)
-        await messenger.send_text(phone, "Let's collect that information again. Type APPLY to restart.")
+        await messenger.send_text(phone, "Let's collect that information again. Tap Apply to restart the loan journey.")
         state.reset(keep_language=True)
         return
 
@@ -882,7 +854,8 @@ async def finalize_onboarding(
     else:
         message = pack["decision_rejected"].format(reason=decision.reason or "of internal policies")
     await messenger.send_text(phone, message)
-    await messenger.send_text(phone, pack["ask_more_help"])
+    await send_post_decision_options(phone, language)
+    state.awaiting_flow_completion = False
     state.reset(keep_language=True)
 
 
@@ -899,6 +872,7 @@ async def handle_support(
         await messenger.send_text(phone, pack["support_handoff"])
         await escalate_to_agent(phone, text, profile)
         await messenger.send_text(phone, pack["support_escalation_ack"])
+        state.awaiting_support_details = False
         state.reset(keep_language=True)
         return
 
@@ -906,7 +880,25 @@ async def handle_support(
     await messenger.send_text(phone, pack["support_closing"])
     profile.metadata["last_support_query"] = text
     user_store.save(profile)
+    state.awaiting_support_details = False
     state.reset(keep_language=True)
+
+
+async def handle_support_shortcut(
+    phone: str,
+    language: str,
+    profile: UserProfile,
+    shortcut_id: int,
+) -> None:
+    if shortcut_id >= len(SUPPORT_KB):
+        return
+    entry = SUPPORT_KB[shortcut_id]
+    pack = get_language_pack(language)
+    answer = entry["a"].get(language) or entry["a"]["en"]
+    await messenger.send_text(phone, answer)
+    await messenger.send_text(phone, pack["support_closing"])
+    profile.metadata["last_support_query"] = entry["q"].get(language) or entry["q"]["en"]
+    user_store.save(profile)
 
 
 async def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> None:
@@ -930,6 +922,53 @@ async def send_dropoff_message(phone: str, language: str) -> None:
     await messenger.send_text(phone, pack["resume_prompt"])
 
 
+async def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, str]] = None) -> None:
+    pack = pack or get_language_pack(language)
+    if not WHATSAPP_FLOW_ID:
+        await messenger.send_text(phone, "Loan form is currently unavailable. Please try again later.")
+        return
+    try:
+        await messenger.send_flow(phone, language)
+    except Exception as exc:  # pragma: no cover - flow failures
+        logger.warning("Failed to send WhatsApp flow: %s", exc)
+        await messenger.send_text(phone, "I'm having trouble opening the form. Please try again in a moment.")
+        return
+    await messenger.send_interactive_buttons(
+        phone,
+        pack["flow_sent"],
+        [
+            ("flow_open", pack["flow_button_label"]),
+            ("intent_support", pack["support_button_label"]),
+        ],
+    )
+
+
+async def prompt_support_menu(phone: str, language: str) -> None:
+    pack = get_language_pack(language)
+    await messenger.send_interactive_buttons(
+        phone,
+        pack["support_menu_intro"],
+        [
+            ("support_payment", pack["support_btn_payment"]),
+            ("support_status", pack["support_btn_status"]),
+            ("support_btn_agent", pack["support_btn_agent"]),
+        ],
+    )
+    await messenger.send_text(phone, pack["support_text_hint"])
+
+
+async def send_post_decision_options(phone: str, language: str) -> None:
+    pack = get_language_pack(language)
+    await messenger.send_interactive_buttons(
+        phone,
+        pack["ask_more_help"],
+        [
+            ("post_accept", pack["post_accept_label"]),
+            ("intent_support", pack["post_support_label"]),
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Message ingestion
 # ---------------------------------------------------------------------------
@@ -947,6 +986,13 @@ def extract_message_text(message: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def extract_button_reply_id(message: Dict[str, Any]) -> Optional[str]:
+    interactive = message.get("interactive")
+    if interactive and interactive.get("type") == "button_reply":
+        return interactive["button_reply"].get("id")
+    return None
+
+
 async def handle_incoming_message(message: Dict[str, Any]) -> None:
     phone = message.get("from")
     if not phone:
@@ -954,59 +1000,91 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
 
     state = conversation_store.get_or_create(phone)
     profile = user_store.get(phone) or UserProfile(phone=phone)
+    previous_activity = profile.last_activity
     profile.touch()
     user_store.save(profile)
 
-    language = state.language or profile.language or DEFAULT_LANGUAGE
-    pack = get_language_pack(language)
-
+    reply_id = extract_button_reply_id(message)
     form_answers = form_answers_from_message(message)
     text = extract_message_text(message)
+    normalized = text.strip().lower() if text else ""
+
+    if state.language is None and profile.language:
+        state.language = profile.language
+
+    language = state.language or profile.language or DEFAULT_LANGUAGE
+    pack = get_language_pack(language)
+    state.is_existing = profile.is_existing
 
     if form_answers:
         state.language = language
-        state.journey = state.journey or "onboarding"
+        state.journey = "onboarding"
         await handle_form_submission(phone, form_answers, state, language, profile)
+        return
+
+    if state.language is None:
+        lang_choice = None
+        if reply_id in {"lang_en", "lang_hi"}:
+            lang_choice = "en" if reply_id.endswith("en") else "hi"
+        elif normalized:
+            lang_choice = detect_language_choice(normalized)
+        if lang_choice:
+            state.language = lang_choice
+            profile.language = lang_choice
+            user_store.save(profile)
+            await prompt_intent(phone, lang_choice, profile.is_existing)
+            return
+        await prompt_language(phone)
+        return
+
+    language = state.language
+    pack = get_language_pack(language)
+
+    if minutes_since(previous_activity) > INACTIVITY_MINUTES and state.journey:
+        await send_dropoff_message(phone, language)
+        state.journey = None
+        state.answers.clear()
+        state.awaiting_flow_completion = False
+        state.awaiting_support_details = False
+
+    if reply_id == "flow_open":
+        await prompt_loan_flow(phone, language, pack)
+        return
+    if reply_id == "intent_apply":
+        await start_onboarding(phone, state, language)
+        return
+    if reply_id == "intent_support":
+        state.journey = "support"
+        state.awaiting_flow_completion = False
+        state.awaiting_support_details = True
+        state.answers.clear()
+        await messenger.send_text(
+            phone,
+            pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
+        )
+        await prompt_support_menu(phone, language)
+        return
+    if reply_id == "post_accept":
+        await messenger.send_text(phone, pack["accept_ack"])
+        return
+    if reply_id and reply_id in SUPPORT_SHORTCUTS:
+        await handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
+        state.reset(keep_language=True)
+        return
+    if reply_id == "support_btn_agent":
+        await messenger.send_text(phone, pack["support_handoff"])
+        await escalate_to_agent(phone, "Agent requested", profile)
+        await messenger.send_text(phone, pack["support_escalation_ack"])
+        state.reset(keep_language=True)
         return
 
     if not text:
         await messenger.send_text(phone, pack["text_only_warning"])
         return
 
-    normalized = text.strip().lower()
-
-    if state.language is None:
-        lang_choice = detect_language_choice(normalized)
-        if lang_choice is None:
-            await prompt_language(phone)
-            return
-        state.language = lang_choice
-        profile.language = lang_choice
-        user_store.save(profile)
-        await prompt_existing(phone, lang_choice)
+    if normalized in {"accept", "accepted", "accept offer"}:
+        await messenger.send_text(phone, pack["accept_ack"])
         return
-
-    language = state.language
-    pack = get_language_pack(language)
-
-    if minutes_since(profile.last_activity) > INACTIVITY_MINUTES:
-        await send_dropoff_message(phone, language)
-        state.journey = None
-        state.step_index = 0
-        state.answers.clear()
-
-    if state.is_existing is None:
-        inferred = infer_existing_user(profile, normalized)
-        if inferred is not None:
-            state.is_existing = inferred
-        else:
-            await prompt_existing(phone, language)
-            return
-
-    if normalized in {"existing", "old", "current"}:
-        state.is_existing = True
-    if normalized in {"new", "fresh"}:
-        state.is_existing = False
 
     if state.journey is None:
         intent = intent_from_text(normalized)
@@ -1015,28 +1093,45 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             return
         if intent == "support":
             state.journey = "support"
+            state.awaiting_support_details = True
+            state.answers.clear()
             await messenger.send_text(
                 phone,
-                pack["support_prompt_existing" if state.is_existing else "support_prompt_new"],
+                pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
             )
+            await prompt_support_menu(phone, language)
             return
-        await prompt_intent(phone, language, state.is_existing or False)
-        return
-
-    if normalized in {"apply", "loan"}:
-        await start_onboarding(phone, state, language)
-        return
-    if normalized in {"support", "help"}:
-        state.journey = "support"
-        await messenger.send_text(
-            phone,
-            pack["support_prompt_existing" if state.is_existing else "support_prompt_new"],
-        )
+        await prompt_intent(phone, language, profile.is_existing)
         return
 
     if state.journey == "onboarding":
-        await handle_onboarding_step(phone, text, state, language, profile)
-    elif state.journey == "support":
+        if normalized in {"support", "help"}:
+            state.journey = "support"
+            state.awaiting_flow_completion = False
+            state.awaiting_support_details = True
+            state.answers.clear()
+            await messenger.send_text(
+                phone,
+                pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
+            )
+            await prompt_support_menu(phone, language)
+            return
+        if state.awaiting_flow_completion:
+            await messenger.send_text(phone, pack["flow_sent"])
+            await prompt_loan_flow(phone, language, pack)
+        else:
+            await messenger.send_text(phone, pack["fallback_intent"])
+        return
+
+    if state.journey == "support":
+        if normalized in {"apply", "loan"}:
+            await start_onboarding(phone, state, language)
+            return
+        if normalized in {"support", "help"}:
+            await prompt_support_menu(phone, language)
+            state.awaiting_support_details = True
+            return
+        state.awaiting_support_details = True
         await handle_support(phone, text, state, language, profile)
 
 
