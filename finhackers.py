@@ -518,6 +518,7 @@ class ConversationState:
     answers: Dict[str, Any] = field(default_factory=dict)
     awaiting_support_details: bool = False
     awaiting_flow_completion: bool = False
+    language_prompted: bool = False
 
     def reset(self, keep_language: bool = True):
         lang = self.language if keep_language else None
@@ -527,6 +528,8 @@ class ConversationState:
         self.answers.clear()
         self.awaiting_support_details = False
         self.awaiting_flow_completion = False
+        if not keep_language:
+            self.language_prompted = False
 
 
 class ConversationStore:
@@ -1558,11 +1561,16 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             lang_choice = detect_language_choice(normalized)
         if lang_choice:
             state.language = lang_choice
+            state.language_prompted = False
             profile.language = lang_choice
             user_store.save(profile)
             await prompt_intent(phone, lang_choice, profile.is_existing)
             return
-        await prompt_language(phone)
+        if not state.language_prompted:
+            await prompt_language(phone)
+            state.language_prompted = True
+        else:
+            await messenger.send_text(phone, get_language_pack("en")["language_prompt"])
         return
 
     language = state.language
