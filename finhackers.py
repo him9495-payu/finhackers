@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
+import random
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -796,25 +797,56 @@ class CreditDecisionClient:
 
     @staticmethod
     def _local_rules(application: LoanApplication) -> DecisionResult:
+        # Synthetic MVP logic: derive pseudo credit indicators from applicant info.
+        random.seed(application.application_id)
+        credit_score = max(
+            520,
+            min(
+                850,
+                random.randint(600, 780)
+                + int(application.monthly_income / 10000) * 5
+                - int(application.requested_amount / 50000) * 5,
+            ),
+        )
+        utilization_ratio = round(random.uniform(0.2, 0.85), 2)
+        fraud_signal = random.random() < 0.05
+        serviceability = application.monthly_income - (application.requested_amount / max(12, application.monthly_income / 1000))
+
         debt_to_income = application.requested_amount / max(application.monthly_income, 1)
         approved = (
             application.age >= 21
-            and application.monthly_income >= 20000
-            and debt_to_income <= 8
+            and application.age <= 70
+            and application.monthly_income >= 15000
+            and debt_to_income <= 10
+            and utilization_ratio <= 0.7
+            and credit_score >= 640
+            and serviceability > application.requested_amount * 0.01
+            and not fraud_signal
             and application.consent_to_credit_check
         )
-        apr = 16.49 if application.monthly_income >= 60000 else 21.99
+
+        apr = 18.99 - min(5, (credit_score - 640) / 50)
+        apr = round(max(12.49, apr), 2)
         offer_amount = min(application.requested_amount, application.monthly_income * 6)
+
         reason = None
         if not approved:
-            if application.age < 21:
-                reason = "minimum age is 21"
-            elif application.monthly_income < 20000:
-                reason = "monthly income below ₹20,000"
-            elif debt_to_income > 8:
-                reason = "requested amount exceeds allowed ratio"
-            elif not application.consent_to_credit_check:
-                reason = "consent to credit check not provided"
+            if not application.consent_to_credit_check:
+                reason = "Consent to credit check not provided."
+            elif fraud_signal:
+                reason = "Automated checks flagged an inconsistency. Please review."
+            elif application.age < 21 or application.age > 70:
+                reason = "Applicant must be between 21 and 70 years old."
+            elif application.monthly_income < 15000:
+                reason = "Monthly income below ₹15,000 threshold."
+            elif credit_score < 640:
+                reason = f"Internal score {credit_score} below minimum requirement."
+            elif utilization_ratio > 0.7:
+                reason = "Utilization ratio too high."
+            elif serviceability <= application.requested_amount * 0.01:
+                reason = "Repayment capacity insufficient."
+            else:
+                reason = "Request exceeds permitted debt-to-income ratio."
         return DecisionResult(
             approved=approved,
             offer_amount=round(offer_amount, 2),
