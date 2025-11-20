@@ -1,0 +1,31 @@
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Test User"
+                },
+                "wa_id": "917737767776"
+              }
+            ],
+            "messages": [
+              {
+                "from": "917737767776",
+                "id": "wamid.mock",
+                "timestamp": "1700000000",
+                "type": "text",
+                "text": {
+                  "body": "Hi from curl"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
