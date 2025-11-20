@@ -92,15 +92,15 @@ Expose the server via `ngrok http 8000` (or similar) and register the HTTPS endp
 ### Recommended DynamoDB Tables
 - **`user_profiles`**
   - Partition key: `phone` (string)
-  - Attributes: `language`, `is_existing`, `status`, `stage`, `last_activity` (ISO timestamp), `metadata` (map storing last application ID, last support query, escalation info)
+  - Attributes: `language`, `is_existing`, `status`, `stage`, `last_activity` (float seconds), `metadata` (map storing last application ID, last support query, escalation info), `created_at`, `updated_at`
   - Used to determine whether a user is new or existing before each interaction.
 - **`interaction_events`**
   - Partition key: `phone`, sort key: `timestamp` (ISO string generated per event)
-  - Attributes: `direction` (`inbound`, `outbound`, `system`), `category` (e.g., `whatsapp_message`, `loan_decision`, `support_answer`), `payload` (arbitrary JSON storing message text, Flow fields, decision offers, etc.)
+  - Attributes: `direction` (`inbound`, `outbound`, `system`), `category` (e.g., `whatsapp_message`, `loan_decision`, `support_answer`), `payload` (arbitrary JSON storing message text, Flow fields, decision offers, etc.), `created_at`, `updated_at`
   - Captures every inbound WhatsApp message, Flow submission, system action, and outbound response so journeys can be replayed, audited, or exported to analytics.
 - **`loan_records`**
   - Partition key: `phone`
-  - Attributes: `reference_id`, `offer_amount`, `apr`, `max_term_months`, `status`, `next_emi_due`, `documents_url`, `emi_schedule`, and repayment flags.
+  - Attributes: `reference_id`, `offer_amount`, `apr`, `max_term_months`, `status`, `next_emi_due`, `documents_url`, `emi_schedule`, repayment flags, `created_at`, `updated_at`
   - Queried whenever borrowers ask for balance, EMI details, statements, documents, repayment changes, etc.; the same data is injected into Bedrock prompts to personalize both answers and Query/Request/Complaint classifications.
 
 ---

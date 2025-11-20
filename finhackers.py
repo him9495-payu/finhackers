@@ -474,9 +474,12 @@ class UserProfile:
     stage: str = "discovery"
     last_activity: float = field(default_factory=now_ts)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=lambda: iso_timestamp())
+    updated_at: str = field(default_factory=lambda: iso_timestamp())
 
     def touch(self):
         self.last_activity = now_ts()
+        self.updated_at = iso_timestamp()
 
     def to_item(self) -> Dict[str, Any]:
         return {
@@ -487,6 +490,8 @@ class UserProfile:
             "stage": self.stage,
             "last_activity": Decimal(str(self.last_activity)),
             "metadata": self.metadata,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
@@ -499,6 +504,8 @@ class UserProfile:
             stage=item.get("stage", "discovery"),
             last_activity=float(item.get("last_activity", now_ts())),
             metadata=item.get("metadata", {}),
+            created_at=item.get("created_at", iso_timestamp()),
+            updated_at=item.get("updated_at", iso_timestamp()),
         )
 
 
@@ -592,6 +599,10 @@ class LoanRecordStore:
         decision: DecisionResult,
         application: LoanApplication,
     ) -> None:
+        existing = self.get_record(phone)
+        created_at = existing.get("created_at") if existing else iso_timestamp()
+        emi_schedule = existing.get("emi_schedule", []) if existing else []
+        now_iso = iso_timestamp()
         record = {
             "phone": phone,
             "reference_id": decision.reference_id,
@@ -603,10 +614,11 @@ class LoanRecordStore:
             "requested_amount": application.requested_amount,
             "monthly_income": application.monthly_income,
             "employment_status": application.employment_status,
-            "last_updated": iso_timestamp(),
+            "created_at": created_at,
+            "updated_at": now_iso,
             "next_emi_due": application.monthly_income * 0.4 if decision.approved else None,
             "documents_url": None,
-            "emi_schedule": [],
+            "emi_schedule": emi_schedule,
         }
         if not decision.approved:
             record["reason"] = decision.reason
@@ -647,12 +659,15 @@ class InteractionStore:
             self._table = resource.Table(table_name)
 
     def put(self, phone: str, direction: str, category: str, payload: Dict[str, Any]) -> None:
+        timestamp = iso_timestamp()
         item = {
             "phone": phone,
-            "timestamp": iso_timestamp(),
+            "timestamp": timestamp,
             "direction": direction,
             "category": category,
             "payload": payload,
+            "created_at": timestamp,
+            "updated_at": timestamp,
         }
         if self._table:
             try:
