@@ -180,7 +180,6 @@ LANGUAGE_ALIASES = {
     "hindi": "hi",
     "hindee": "hi",
     "hin": "hi",
-    "hi": "hi",
     "हिंदी": "hi",
     "1": "en",
     "2": "hi",
