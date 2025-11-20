@@ -90,10 +90,11 @@ LANGUAGE_PACKS: Dict[str, Dict[str, str]] = {
         "support_prompt_existing": "Tell me what kind of help you need.",
         "support_prompt_new": "Need help before applying? Let me know.",
         "support_menu_intro": "Pick a support topic:",
+        "support_menu_intro_secondary": "More help options:",
         "support_btn_payment": "Pay EMI",
         "support_btn_status": "Loan status",
         "support_btn_docs": "Documents",
-        "support_btn_repayment": "Change EMIs",
+        "support_btn_repayment": "Change EMI",
         "support_btn_agent": "Talk to agent",
         "support_text_hint": "Need something else? Type your question.",
         "support_handoff": "I'll connect you with a PayU expert so you don't have to wait.",
@@ -136,6 +137,7 @@ LANGUAGE_PACKS: Dict[str, Dict[str, str]] = {
         "support_prompt_existing": "कृपया बताएँ आपको किस तरह की मदद चाहिए।",
         "support_prompt_new": "आवेदन से पहले कोई सवाल है? मुझे बताएँ।",
         "support_menu_intro": "किस विषय में मदद चाहिए?",
+        "support_menu_intro_secondary": "अन्य सहायता विकल्प:",
         "support_btn_payment": "EMI जमा",
         "support_btn_status": "लोन स्टेटस",
         "support_btn_docs": "डॉक्यूमेंट्स",
@@ -1437,6 +1439,12 @@ async def prompt_support_menu(phone: str, language: str) -> None:
             ("support_payment", pack["support_btn_payment"]),
             ("support_status", pack["support_btn_status"]),
             ("support_docs", pack["support_btn_docs"]),
+        ],
+    )
+    await messenger.send_interactive_buttons(
+        phone,
+        pack["support_menu_intro_secondary"],
+        [
             ("support_repayment_change", pack["support_btn_repayment"]),
             ("support_btn_agent", pack["support_btn_agent"]),
         ],
