@@ -53,6 +53,7 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 | `AWS_REGION` | Optional | Region for DynamoDB/Bedrock (`ap-south-1` default). |
 | `INACTIVITY_MINUTES` | Optional | Minutes before drop-off reminders (default `30`). |
 | `BEDROCK_MODEL_ID` | Optional (recommended) | Amazon Bedrock model ID (e.g., `anthropic.claude-3-haiku-20240307`) used for answering support queries. |
+| `INTERACTION_TABLE_NAME` | Optional | DynamoDB table storing every inbound/outbound interaction for auditing and segmentation. |
 | `WHATSAPP_FLOW_ID` | Optional | WhatsApp Flow identifier for onboarding forms. |
 | `WHATSAPP_FLOW_TOKEN` | Optional | Token required by Flow submissions (auto-randomized if omitted). |
 | `HUMAN_HANDOFF_QUEUE` | Optional | Queue/topic name for agent escalations. |
@@ -85,6 +86,16 @@ Expose the server via `ngrok http 8000` (or similar) and register the HTTPS endp
 ## Data & Decisioning
 - `LoanApplication` → `DecisionResult` mirrors backend contracts. When no backend is configured, the offline heuristic enforces NBFC guardrails (age ≥ 21, income ≥ ₹20k, DTI ≤ 8, consent required, offer cap `min(requested_amount, monthly_income * 6)`).
 - User lifecycle and loan metadata (reference IDs, last support query, escalations) are written to DynamoDB and can be streamed into CRM or analytics pipelines.
+
+### Recommended DynamoDB Tables
+- **`user_profiles`**
+  - Partition key: `phone` (string)
+  - Attributes: `language`, `is_existing`, `status`, `stage`, `last_activity` (ISO timestamp), `metadata` (map storing last application ID, last support query, escalation info)
+  - Used to determine whether a user is new or existing before each interaction.
+- **`interaction_events`**
+  - Partition key: `phone`, sort key: `timestamp` (ISO string generated per event)
+  - Attributes: `direction` (`inbound`, `outbound`, `system`), `category` (e.g., `whatsapp_message`, `loan_decision`, `support_answer`), `payload` (arbitrary JSON storing message text, Flow fields, decision offers, etc.)
+  - Captures every inbound WhatsApp message, Flow submission, system action, and outbound response so journeys can be replayed, audited, or exported to analytics.
 
 ---
 

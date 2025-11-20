@@ -62,6 +62,7 @@ META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "payu-verify-token")
 BACKEND_DECISION_URL = os.getenv("BACKEND_DECISION_URL")
 BACKEND_API_KEY = os.getenv("BACKEND_DECISION_API_KEY")
 USER_TABLE_NAME = os.getenv("USER_TABLE_NAME")
+INTERACTION_TABLE_NAME = os.getenv("INTERACTION_TABLE_NAME")
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
 INACTIVITY_MINUTES = int(os.getenv("INACTIVITY_MINUTES", "30"))
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID")
@@ -533,8 +534,38 @@ class UserProfileStore:
         self._fallback[profile.phone] = profile
 
 
+class InteractionStore:
+    """Persist every inbound/outbound interaction for auditing and analytics."""
+
+    def __init__(self, table_name: Optional[str], region: str):
+        self.table_name = table_name
+        self.region = region
+        self._table = None
+        self._fallback: List[Dict[str, Any]] = []
+        if table_name and boto3:
+            resource = boto3.resource("dynamodb", region_name=region)
+            self._table = resource.Table(table_name)
+
+    def put(self, phone: str, direction: str, category: str, payload: Dict[str, Any]) -> None:
+        item = {
+            "phone": phone,
+            "timestamp": iso_timestamp(),
+            "direction": direction,
+            "category": category,
+            "payload": payload,
+        }
+        if self._table:
+            try:
+                self._table.put_item(Item=item)
+                return
+            except Exception as exc:  # pragma: no cover - network errors
+                logger.error("Dynamo interaction put_item failed: %s", exc)
+        self._fallback.append(item)
+
+
 conversation_store = ConversationStore()
 user_store = UserProfileStore(USER_TABLE_NAME, AWS_REGION)
+interaction_store = InteractionStore(INTERACTION_TABLE_NAME, AWS_REGION)
 
 
 # ---------------------------------------------------------------------------
@@ -834,6 +865,12 @@ async def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
             ("intent_support", pack["intent_support"]),
         ],
     )
+    record_interaction(
+        phone,
+        "outbound",
+        "intent_prompt",
+        {"language": language, "is_existing": is_existing},
+    )
 
 
 async def start_onboarding(phone: str, state: ConversationState, language: str) -> None:
@@ -843,6 +880,12 @@ async def start_onboarding(phone: str, state: ConversationState, language: str) 
     pack = get_language_pack(language)
     await messenger.send_text(phone, pack["onboarding_intro"])
     await prompt_loan_flow(phone, language)
+    record_interaction(
+        phone,
+        "system",
+        "start_onboarding",
+        {"language": language, "known_profile": bool(state.is_existing)},
+    )
 
 
 def validate_onboarding_answer(field: str, raw_value: Any) -> Any:
@@ -889,6 +932,12 @@ async def handle_form_submission(
     logger.info("Form submission missing fields [%s] for %s", missing, phone)
     await messenger.send_text(phone, "It looks like we still need a few details. Please reopen the form.")
     await prompt_loan_flow(phone, language)
+    record_interaction(
+        phone,
+        "system",
+        "incomplete_flow_submission",
+        {"missing_fields": missing.split(", ") if missing else []},
+    )
 
 
 async def finalize_onboarding(
@@ -914,6 +963,13 @@ async def finalize_onboarding(
         state.reset(keep_language=True)
         return
 
+    record_interaction(
+        phone,
+        "system",
+        "loan_application",
+        application.dict(),
+    )
+
     pack = get_language_pack(language)
     await messenger.send_text(phone, pack["decision_submit"])
     decision = await decision_client.evaluate(application)
@@ -934,6 +990,19 @@ async def finalize_onboarding(
     else:
         message = pack["decision_rejected"].format(reason=decision.reason or "of internal policies")
     await messenger.send_text(phone, message)
+    record_interaction(
+        phone,
+        "outbound",
+        "loan_decision",
+        {
+            "approved": decision.approved,
+            "offer_amount": decision.offer_amount,
+            "apr": decision.apr,
+            "max_term_months": decision.max_term_months,
+            "reference_id": decision.reference_id,
+            "reason": decision.reason,
+        },
+    )
     await send_post_decision_options(phone, language)
     state.awaiting_flow_completion = False
     state.reset(keep_language=True)
@@ -954,6 +1023,12 @@ async def handle_support(
         await messenger.send_text(phone, pack["support_closing"])
         profile.metadata["last_support_query"] = text
         user_store.save(profile)
+        record_interaction(
+            phone,
+            "outbound",
+            "support_answer",
+            {"source": "bedrock", "question": text},
+        )
         state.awaiting_support_details = False
         state.reset(keep_language=True)
         return
@@ -963,6 +1038,12 @@ async def handle_support(
         await messenger.send_text(phone, pack["support_handoff"])
         await escalate_to_agent(phone, text, profile)
         await messenger.send_text(phone, pack["support_escalation_ack"])
+        record_interaction(
+            phone,
+            "system",
+            "support_escalation",
+            {"reason": "low_confidence", "question": text},
+        )
         state.awaiting_support_details = False
         state.reset(keep_language=True)
         return
@@ -971,6 +1052,12 @@ async def handle_support(
     await messenger.send_text(phone, pack["support_closing"])
     profile.metadata["last_support_query"] = text
     user_store.save(profile)
+    record_interaction(
+        phone,
+        "outbound",
+        "support_answer",
+        {"source": "kb", "question": text, "confidence": confidence},
+    )
     state.awaiting_support_details = False
     state.reset(keep_language=True)
 
@@ -990,6 +1077,12 @@ async def handle_support_shortcut(
     await messenger.send_text(phone, pack["support_closing"])
     profile.metadata["last_support_query"] = entry["q"].get(language) or entry["q"]["en"]
     user_store.save(profile)
+    record_interaction(
+        phone,
+        "outbound",
+        "support_answer",
+        {"source": "button_shortcut", "shortcut_id": shortcut_id},
+    )
 
 
 async def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> None:
@@ -1005,12 +1098,34 @@ async def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> 
         "queue": HUMAN_HANDOFF_QUEUE,
     }
     user_store.save(profile)
+    record_interaction(
+        phone,
+        "system",
+        "agent_handoff",
+        {"question": question, "queue": HUMAN_HANDOFF_QUEUE},
+    )
 
 
 async def send_dropoff_message(phone: str, language: str) -> None:
     pack = get_language_pack(language)
     await messenger.send_text(phone, pack["dropoff"])
     await messenger.send_text(phone, pack["resume_prompt"])
+    record_interaction(
+        phone,
+        "outbound",
+        "dropoff_nudge",
+        {"language": language},
+    )
+
+
+def record_interaction(
+    phone: str,
+    direction: str,
+    category: str,
+    payload: Optional[Dict[str, Any]] = None,
+) -> None:
+    payload = payload or {}
+    interaction_store.put(phone, direction, category, payload)
 
 
 async def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, str]] = None) -> None:
@@ -1032,6 +1147,12 @@ async def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, s
             ("intent_support", pack["support_button_label"]),
         ],
     )
+    record_interaction(
+        phone,
+        "outbound",
+        "whatsapp_flow",
+        {"flow_id": WHATSAPP_FLOW_ID, "language": language},
+    )
 
 
 async def prompt_support_menu(phone: str, language: str) -> None:
@@ -1046,6 +1167,12 @@ async def prompt_support_menu(phone: str, language: str) -> None:
         ],
     )
     await messenger.send_text(phone, pack["support_text_hint"])
+    record_interaction(
+        phone,
+        "outbound",
+        "support_menu",
+        {"language": language},
+    )
 
 
 async def send_post_decision_options(phone: str, language: str) -> None:
@@ -1057,6 +1184,12 @@ async def send_post_decision_options(phone: str, language: str) -> None:
             ("post_accept", pack["post_accept_label"]),
             ("intent_support", pack["post_support_label"]),
         ],
+    )
+    record_interaction(
+        phone,
+        "outbound",
+        "post_decision_cta",
+        {"language": language},
     )
 
 
@@ -1107,7 +1240,27 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
     pack = get_language_pack(language)
     state.is_existing = profile.is_existing
 
+    record_interaction(
+        phone,
+        "inbound",
+        "whatsapp_message",
+        {
+            "message_id": message.get("id"),
+            "text": text,
+            "reply_id": reply_id,
+            "has_form": bool(form_answers),
+            "language": language,
+            "profile_exists": bool(profile.is_existing),
+        },
+    )
+
     if form_answers:
+        record_interaction(
+            phone,
+            "inbound",
+            "flow_submission",
+            {"fields": list(form_answers.keys())},
+        )
         state.language = language
         state.journey = "onboarding"
         await handle_form_submission(phone, form_answers, state, language, profile)
@@ -1157,6 +1310,12 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         return
     if reply_id == "post_accept":
         await messenger.send_text(phone, pack["accept_ack"])
+        record_interaction(
+            phone,
+            "inbound",
+            "post_accept",
+            {"source": "button"},
+        )
         return
     if reply_id and reply_id in SUPPORT_SHORTCUTS:
         await handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
@@ -1175,6 +1334,12 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
 
     if normalized in {"accept", "accepted", "accept offer"}:
         await messenger.send_text(phone, pack["accept_ack"])
+        record_interaction(
+            phone,
+            "inbound",
+            "post_accept",
+            {"source": "text"},
+        )
         return
 
     if state.journey is None:
