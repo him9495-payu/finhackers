@@ -657,8 +657,37 @@ interaction_store = InteractionStore(INTERACTION_TABLE_NAME, AWS_REGION)
 loan_store = LoanRecordStore(LOAN_TABLE_NAME, AWS_REGION)
 
 
+def _sanitize_for_dynamo(value: Any):
+    if value is None:
+        return None
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, nested in value.items():
+            sanitized = _sanitize_for_dynamo(nested)
+            if sanitized is None:
+                continue
+            cleaned[key] = sanitized
+        return cleaned
+    if isinstance(value, list):
+        cleaned_list = []
+        for item in value:
+            sanitized = _sanitize_for_dynamo(item)
+            if sanitized is not None:
+                cleaned_list.append(sanitized)
+        return cleaned_list
+    return value
+
+
+def serialize_conversation_state(state: ConversationState) -> Dict[str, Any]:
+    raw = asdict(state)
+    cleaned = _sanitize_for_dynamo(raw)
+    return cleaned or {}
+
+
 def persist_conversation_state(profile: UserProfile, state: ConversationState) -> None:
-    profile.metadata["conversation_state"] = asdict(state)
+    profile.metadata["conversation_state"] = serialize_conversation_state(state)
     user_store.save(profile)
 
 
@@ -1524,19 +1553,22 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
     pack = get_language_pack(language)
     conversation_state.is_existing = profile.is_existing
 
-    record_interaction(
-        phone,
-        "inbound",
-        "whatsapp_message",
-        {
-            "message_id": message.get("id"),
-            "text": text,
-            "reply_id": reply_id,
-            "has_form": bool(form_answers),
-            "language": language,
-            "profile_exists": bool(profile.is_existing),
-        },
-    )
+    try:
+        record_interaction(
+            phone,
+            "inbound",
+            "whatsapp_message",
+            {
+                "message_id": message.get("id"),
+                "text": text,
+                "reply_id": reply_id,
+                "has_form": bool(form_answers),
+                "language": language,
+                "profile_exists": bool(profile.is_existing),
+            },
+        )
+    except Exception as exc:
+        logger.exception("Failed to record inbound interaction: phone=%s error=%s", phone, exc)
 
     try:
         if normalized == "language":
@@ -1550,12 +1582,15 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             return
 
         if form_answers:
-            record_interaction(
-                phone,
-                "inbound",
-                "flow_submission",
-                {"fields": list(form_answers.keys())},
-            )
+            try:
+                record_interaction(
+                    phone,
+                    "inbound",
+                    "flow_submission",
+                    {"fields": list(form_answers.keys())},
+                )
+            except Exception as exc:
+                logger.exception("Failed to record flow submission: phone=%s error=%s", phone, exc)
             conversation_state.language = language
             conversation_state.journey = "onboarding"
             await handle_form_submission(phone, form_answers, conversation_state, language, profile)
@@ -1617,12 +1652,15 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             return
         if reply_id == "post_accept":
             await messenger.send_text(phone, pack["accept_ack"])
-            record_interaction(
-                phone,
-                "inbound",
-                "post_accept",
-                {"source": "button"},
-            )
+            try:
+                record_interaction(
+                    phone,
+                    "inbound",
+                    "post_accept",
+                    {"source": "button"},
+                )
+            except Exception as exc:
+                logger.exception("Failed to log post_accept button: phone=%s error=%s", phone, exc)
             return
         if reply_id and reply_id in SUPPORT_SHORTCUTS:
             await handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
@@ -1641,12 +1679,15 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
 
         if normalized in {"accept", "accepted", "accept offer"}:
             await messenger.send_text(phone, pack["accept_ack"])
-            record_interaction(
-                phone,
-                "inbound",
-                "post_accept",
-                {"source": "text"},
-            )
+            try:
+                record_interaction(
+                    phone,
+                    "inbound",
+                    "post_accept",
+                    {"source": "text"},
+                )
+            except Exception as exc:
+                logger.exception("Failed to log post_accept text: phone=%s error=%s", phone, exc)
             return
 
         if conversation_state.journey is None:
@@ -1702,8 +1743,13 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
                 return
             conversation_state.awaiting_support_details = True
             await handle_support(phone, text, conversation_state, language, profile)
+    except Exception as exc:
+        logger.exception("Failed to handle message for phone=%s error=%s", phone, exc)
     finally:
-        persist_conversation_state(profile, conversation_state)
+        try:
+            persist_conversation_state(profile, conversation_state)
+        except Exception as exc:
+            logger.exception("Failed to persist conversation state: phone=%s error=%s", phone, exc)
 
 
 # ---------------------------------------------------------------------------
