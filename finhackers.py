@@ -1018,14 +1018,23 @@ async def classify_post_disbursal_category(question: str) -> str:
 # ---------------------------------------------------------------------------
 async def send_language_buttons(phone: str) -> None:
     english_pack = get_language_pack("en")
-    await messenger.send_interactive_buttons(
-        phone,
-        english_pack["language_prompt"],
-        [
-            ("lang_en", english_pack["language_option_en"]),
-            ("lang_hi", english_pack["language_option_hi"]),
-        ],
-    )
+    buttons = [
+        ("lang_en", english_pack["language_option_en"]),
+        ("lang_hi", english_pack["language_option_hi"]),
+    ]
+    try:
+        await messenger.send_interactive_buttons(
+            phone,
+            english_pack["language_prompt"],
+            buttons,
+        )
+    except Exception as exc:
+        logger.error("Failed to send language buttons: phone=%s error=%s", phone, exc)
+        fallback = (
+            f"{english_pack['language_prompt']}\n\n"
+            "If the buttons are hidden, reply with 1 for English or 2 for हिंदी."
+        )
+        await messenger.send_text(phone, fallback)
 
 
 async def prompt_language(phone: str) -> None:
@@ -1557,6 +1566,10 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             if reply_id == "lang_en":
                 lang_choice = "en"
             elif reply_id == "lang_hi":
+                lang_choice = "hi"
+            elif normalized == "1":
+                lang_choice = "en"
+            elif normalized == "2":
                 lang_choice = "hi"
 
             if lang_choice:
