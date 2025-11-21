@@ -17,7 +17,7 @@ Comprehensive guide for the bilingual (English/Hindi) personal-loan assistant th
 
 ## Key Journeys
 ### Onboarding (New or Returning Borrower)
-1. **First touch** – chatbot greets the user, requests language preference (English/Hindi) using WhatsApp buttons, and determines whether the customer is new or existing purely from DynamoDB history (no question is asked in chat).
+1. **First touch** – chatbot greets the user, requests language preference (English/Hindi) using WhatsApp buttons, and determines whether the customer is new or existing purely from DynamoDB history (no question is asked in chat). At any point customers can type `language` to reopen the selector; this is the only free-text trigger for changing languages.
 2. **Journey selection** – once language is set, the bot presents button-based options such as _Apply for a loan_ or _Get support_, eliminating manual typing wherever possible.
 3. **WhatsApp Flow form** – when `WHATSAPP_FLOW_ID` is configured, the bot dispatches a native WhatsApp Flow form to capture user data. The form is the only channel for collecting application details; if it closes, the bot re-opens the same flow via buttons instead of reverting to inline questions:
    - Full name (PAN)
