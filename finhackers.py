@@ -514,54 +514,58 @@ class ConversationState:
 
 
 class UserProfileStore:
-    """Persist user profiles to DynamoDB with an in-memory fallback."""
+    """Persist user profiles to DynamoDB (no local fallback)."""
 
     def __init__(self, table_name: Optional[str], region: str):
+        if not table_name:
+            raise RuntimeError("USER_TABLE_NAME must be configured for persistent state.")
+        if not boto3:
+            raise RuntimeError("boto3 is required to access DynamoDB.")
         self.table_name = table_name
         self.region = region
-        self._table = None
-        self._fallback: Dict[str, UserProfile] = {}
-        if table_name and boto3:
+        try:
             resource = boto3.resource("dynamodb", region_name=region)
             self._table = resource.Table(table_name)
+        except Exception as exc:  # pragma: no cover - boto issues
+            raise RuntimeError(f"Failed to connect to DynamoDB table {table_name}") from exc
 
     @property
     def uses_dynamo(self) -> bool:
-        return self._table is not None
+        return True
 
     def get(self, phone: str) -> Optional[UserProfile]:
-        if self._table:
-            try:
-                response = self._table.get_item(Key={"phone": phone})
-            except Exception as exc:  # pragma: no cover - network error
-                logger.error("Dynamo get_item failed: %s", exc)
-                return self._fallback.get(phone)
-            item = response.get("Item")
-            return UserProfile.from_item(item) if item else None
-        return self._fallback.get(phone)
+        try:
+            response = self._table.get_item(Key={"phone": phone})
+        except Exception as exc:  # pragma: no cover - network error
+            logger.error("Dynamo get_item failed: %s", exc)
+            raise
+        item = response.get("Item")
+        return UserProfile.from_item(item) if item else None
 
     def save(self, profile: UserProfile) -> None:
         profile.touch()
-        if self._table:
-            try:
-                self._table.put_item(Item=profile.to_item())
-                return
-            except Exception as exc:  # pragma: no cover - network error
-                logger.error("Dynamo put_item failed: %s", exc)
-        self._fallback[profile.phone] = profile
+        try:
+            self._table.put_item(Item=profile.to_item())
+        except Exception as exc:  # pragma: no cover - network error
+            logger.error("Dynamo put_item failed: %s", exc)
+            raise
 
 
 class LoanRecordStore:
     """Stores disbursal-level data for post-loan servicing."""
 
     def __init__(self, table_name: Optional[str], region: str):
+        if not table_name:
+            raise RuntimeError("LOAN_TABLE_NAME must be configured.")
+        if not boto3:
+            raise RuntimeError("boto3 is required to access DynamoDB.")
         self.table_name = table_name
         self.region = region
-        self._table = None
-        self._fallback: Dict[str, Dict[str, Any]] = {}
-        if table_name and boto3:
+        try:
             resource = boto3.resource("dynamodb", region_name=region)
             self._table = resource.Table(table_name)
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(f"Failed to connect to DynamoDB table {table_name}") from exc
 
     def upsert_from_decision(
         self,
@@ -595,24 +599,22 @@ class LoanRecordStore:
         self._write_record(record)
 
     def _write_record(self, record: Dict[str, Any]) -> None:
-        if self._table:
-            try:
-                self._table.put_item(Item=record)
-                return
-            except Exception as exc:  # pragma: no cover
-                logger.error("Dynamo loan_record put_item failed: %s", exc)
-        self._fallback[record["phone"]] = record
+        try:
+            self._table.put_item(Item=record)
+        except Exception as exc:  # pragma: no cover
+            logger.error("Dynamo loan_record put_item failed: %s", exc)
+            raise
 
     def get_record(self, phone: str) -> Optional[Dict[str, Any]]:
-        if self._table:
-            try:
-                response = self._table.get_item(Key={"phone": phone})
-                item = response.get("Item")
-                if item:
-                    return item
-            except Exception as exc:  # pragma: no cover
-                logger.error("Dynamo loan_record get_item failed: %s", exc)
-        return self._fallback.get(phone)
+        try:
+            response = self._table.get_item(Key={"phone": phone})
+            item = response.get("Item")
+            if item:
+                return item
+        except Exception as exc:  # pragma: no cover
+            logger.error("Dynamo loan_record get_item failed: %s", exc)
+            raise
+        return None
 
 
 
@@ -620,13 +622,17 @@ class InteractionStore:
     """Persist every inbound/outbound interaction for auditing and analytics."""
 
     def __init__(self, table_name: Optional[str], region: str):
+        if not table_name:
+            raise RuntimeError("INTERACTION_TABLE_NAME must be configured.")
+        if not boto3:
+            raise RuntimeError("boto3 is required to access DynamoDB.")
         self.table_name = table_name
         self.region = region
-        self._table = None
-        self._fallback: List[Dict[str, Any]] = []
-        if table_name and boto3:
+        try:
             resource = boto3.resource("dynamodb", region_name=region)
             self._table = resource.Table(table_name)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to connect to DynamoDB table {table_name}") from exc
 
     def put(self, phone: str, direction: str, category: str, payload: Dict[str, Any]) -> None:
         timestamp = iso_timestamp()
@@ -639,13 +645,11 @@ class InteractionStore:
             "created_at": timestamp,
             "updated_at": timestamp,
         }
-        if self._table:
-            try:
-                self._table.put_item(Item=item)
-                return
-            except Exception as exc:  # pragma: no cover - network errors
-                logger.error("Dynamo interaction put_item failed: %s", exc)
-        self._fallback.append(item)
+        try:
+            self._table.put_item(Item=item)
+        except Exception as exc:  # pragma: no cover - network errors
+            logger.error("Dynamo interaction put_item failed: %s", exc)
+            raise
 
 
 user_store = UserProfileStore(USER_TABLE_NAME, AWS_REGION)
