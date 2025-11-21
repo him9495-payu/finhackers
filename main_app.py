@@ -36,6 +36,11 @@ from db_io import (
 )
 
 try:
+    import boto3
+except ImportError:  # pragma: no cover
+    boto3 = None
+
+try:
     from mangum import Mangum
 except ImportError:  # pragma: no cover - mangum optional for local runs
     Mangum = None
