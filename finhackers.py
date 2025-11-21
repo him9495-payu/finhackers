@@ -532,21 +532,6 @@ class ConversationState:
             self.language_prompted = False
 
 
-class ConversationStore:
-    """In-memory conversation store. Swap with Redis for multi-instance deployments."""
-
-    def __init__(self):
-        self._store: Dict[str, ConversationState] = {}
-
-    def get_or_create(self, phone: str) -> ConversationState:
-        if phone not in self._store:
-            self._store[phone] = ConversationState()
-        return self._store[phone]
-
-    def clear(self, phone: str):
-        self._store.pop(phone, None)
-
-
 class UserProfileStore:
     """Persist user profiles to DynamoDB with an in-memory fallback."""
 
@@ -682,7 +667,6 @@ class InteractionStore:
         self._fallback.append(item)
 
 
-conversation_store = ConversationStore()
 user_store = UserProfileStore(USER_TABLE_NAME, AWS_REGION)
 interaction_store = InteractionStore(INTERACTION_TABLE_NAME, AWS_REGION)
 loan_store = LoanRecordStore(LOAN_TABLE_NAME, AWS_REGION)
@@ -1509,8 +1493,15 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
     if not phone:
         return
 
-    state = conversation_store.get_or_create(phone)
     profile = user_store.get(phone) or UserProfile(phone=phone)
+    state_snapshot = profile.metadata.get("conversation_state")
+    if state_snapshot:
+        try:
+            conversation_state = ConversationState(**state_snapshot)
+        except TypeError:
+            conversation_state = ConversationState()
+    else:
+        conversation_state = ConversationState()
     previous_activity = profile.last_activity
     profile.touch()
     user_store.save(profile)
@@ -1520,12 +1511,12 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
     text = extract_message_text(message)
     normalized = text.strip().lower() if text else ""
 
-    if state.language is None and profile.language:
-        state.language = profile.language
+    if conversation_state.language is None and profile.language:
+        conversation_state.language = profile.language
 
-    language = state.language or profile.language or DEFAULT_LANGUAGE
+    language = conversation_state.language or profile.language or DEFAULT_LANGUAGE
     pack = get_language_pack(language)
-    state.is_existing = profile.is_existing
+    conversation_state.is_existing = profile.is_existing
 
     record_interaction(
         phone,
@@ -1548,52 +1539,57 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             "flow_submission",
             {"fields": list(form_answers.keys())},
         )
-        state.language = language
-        state.journey = "onboarding"
-        await handle_form_submission(phone, form_answers, state, language, profile)
+        conversation_state.language = language
+        conversation_state.journey = "onboarding"
+        await handle_form_submission(phone, form_answers, conversation_state, language, profile)
+        profile.metadata["conversation_state"] = conversation_state.__dict__
+        user_store.save(profile)
         return
 
-    if state.language is None:
+    if conversation_state.language is None:
         lang_choice = None
         if reply_id in {"lang_en", "lang_hi"}:
             lang_choice = "en" if reply_id.endswith("en") else "hi"
         elif normalized:
             lang_choice = detect_language_choice(normalized)
         if lang_choice:
-            state.language = lang_choice
-            state.language_prompted = False
+            conversation_state.language = lang_choice
+            conversation_state.language_prompted = False
             profile.language = lang_choice
+            user_store.save(profile)
+            profile.metadata["conversation_state"] = conversation_state.__dict__
             user_store.save(profile)
             await prompt_intent(phone, lang_choice, profile.is_existing)
             return
-        if not state.language_prompted:
+        if not conversation_state.language_prompted:
             await prompt_language(phone)
-            state.language_prompted = True
+            conversation_state.language_prompted = True
         else:
             await messenger.send_text(phone, get_language_pack("en")["language_prompt"])
+        profile.metadata["conversation_state"] = conversation_state.__dict__
+        user_store.save(profile)
         return
-
-    language = state.language
+    language = conversation_state.language
     pack = get_language_pack(language)
 
-    if minutes_since(previous_activity) > INACTIVITY_MINUTES and state.journey:
+    if minutes_since(previous_activity) > INACTIVITY_MINUTES and conversation_state.journey:
         await send_dropoff_message(phone, language)
-        state.journey = None
-        state.answers.clear()
-        state.awaiting_flow_completion = False
-        state.awaiting_support_details = False
+        conversation_state.journey = None
+        conversation_state.answers.clear()
+        conversation_state.awaiting_flow_completion = False
+        conversation_state.awaiting_support_details = False
 
     if reply_id == "flow_open":
         await prompt_loan_flow(phone, language, pack)
         return
     if reply_id == "intent_apply":
-        await start_onboarding(phone, state, language)
+        await start_onboarding(phone, conversation_state, language)
         return
     if reply_id == "intent_support":
-        state.journey = "support"
-        state.awaiting_flow_completion = False
-        state.awaiting_support_details = True
-        state.answers.clear()
+        conversation_state.journey = "support"
+        conversation_state.awaiting_flow_completion = False
+        conversation_state.awaiting_support_details = True
+        conversation_state.answers.clear()
         await messenger.send_text(
             phone,
             pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
@@ -1611,13 +1607,13 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         return
     if reply_id and reply_id in SUPPORT_SHORTCUTS:
         await handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
-        state.reset(keep_language=True)
+        conversation_state.reset(keep_language=True)
         return
     if reply_id == "support_btn_agent":
         await messenger.send_text(phone, pack["support_handoff"])
         await escalate_to_agent(phone, "Agent requested", profile)
         await messenger.send_text(phone, pack["support_escalation_ack"])
-        state.reset(keep_language=True)
+        conversation_state.reset(keep_language=True)
         return
 
     if not text:
@@ -1634,15 +1630,15 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         )
         return
 
-    if state.journey is None:
+    if conversation_state.journey is None:
         intent = intent_from_text(normalized)
         if intent == "apply":
-            await start_onboarding(phone, state, language)
+            await start_onboarding(phone, conversation_state, language)
             return
         if intent == "support":
-            state.journey = "support"
-            state.awaiting_support_details = True
-            state.answers.clear()
+            conversation_state.journey = "support"
+            conversation_state.awaiting_support_details = True
+            conversation_state.answers.clear()
             await messenger.send_text(
                 phone,
                 pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
@@ -1655,38 +1651,40 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         await prompt_intent(phone, language, profile.is_existing)
         return
 
-    if state.journey == "onboarding":
+    if conversation_state.journey == "onboarding":
         if normalized in {"support", "help"}:
-            state.journey = "support"
-            state.awaiting_flow_completion = False
-            state.awaiting_support_details = True
-            state.answers.clear()
+            conversation_state.journey = "support"
+            conversation_state.awaiting_flow_completion = False
+            conversation_state.awaiting_support_details = True
+            conversation_state.answers.clear()
             await messenger.send_text(
                 phone,
                 pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
             )
             await prompt_support_menu(phone, language)
             return
-        if state.awaiting_flow_completion:
+        if conversation_state.awaiting_flow_completion:
             await messenger.send_text(phone, pack["flow_sent"])
             await prompt_loan_flow(phone, language, pack)
         else:
             await messenger.send_text(phone, pack["fallback_intent"])
         return
 
-    if state.journey == "support":
+    if conversation_state.journey == "support":
         if normalized in {"apply", "loan"}:
-            await start_onboarding(phone, state, language)
+            await start_onboarding(phone, conversation_state, language)
             return
         if normalized in {"support", "help"}:
             await prompt_support_menu(phone, language)
-            state.awaiting_support_details = True
+            conversation_state.awaiting_support_details = True
             return
         if loan_store.get_record(phone) and normalized in {"balance", "emi", "statement", "docs", "document", "repayment"}:
             await handle_post_disbursal(phone, language, normalized)
             return
-        state.awaiting_support_details = True
-        await handle_support(phone, text, state, language, profile)
+        conversation_state.awaiting_support_details = True
+        await handle_support(phone, text, conversation_state, language, profile)
+    profile.metadata["conversation_state"] = conversation_state.__dict__
+    user_store.save(profile)
 
 
 # ---------------------------------------------------------------------------
