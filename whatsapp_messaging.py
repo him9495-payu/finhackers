@@ -81,11 +81,24 @@ class MetaWhatsAppClient:
         flow_id: Optional[str],
         flow_token: Optional[str] = None,
         flow_cta: str = "Open form",
-        flow_version: str = "7.2",
+        flow_version: Optional[str] = None,
         entry_screen: str = "loan_form",
     ) -> None:
         if not (flow_id and flow_token):
             raise RuntimeError("WhatsApp Flow ID and token must be configured")
+
+        parameters = {
+            "flow_id": flow_id,
+            "flow_token": flow_token,
+            "flow_cta": flow_cta,
+            "flow_action": "navigate",
+            "flow_action_payload": {
+                "screen": entry_screen,
+                "data": {"language": "en" if language == "en" else "hi"},
+            },
+        }
+        if flow_version:
+            parameters["flow_message_version"] = flow_version
 
         payload = {
             "messaging_product": "whatsapp",
@@ -96,19 +109,7 @@ class MetaWhatsAppClient:
                 "body": {"text": "PayU Finance Loan Form"},
                 "action": {
                     "name": "flow",
-                    "parameters": {
-                        "flow_message_version": flow_version,
-                        "flow_id": flow_id,
-                        "flow_token": flow_token,
-                        "flow_cta": flow_cta,
-                        "flow_action": "navigate",
-                        "flow_action_payload": {
-                            "screen": entry_screen,
-                            "data": {
-                                "language": "en" if language == "en" else "hi"
-                            },
-                        },
-                    },
+                    "parameters": parameters,
                 },
             },
         }
