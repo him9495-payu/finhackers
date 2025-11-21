@@ -1511,10 +1511,7 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
     text = extract_message_text(message)
     normalized = text.strip().lower() if text else ""
 
-    if conversation_state.language is None and profile.language:
-        conversation_state.language = profile.language
-
-    language = conversation_state.language or profile.language or DEFAULT_LANGUAGE
+    language = conversation_state.language or DEFAULT_LANGUAGE
     pack = get_language_pack(language)
     conversation_state.is_existing = profile.is_existing
 
