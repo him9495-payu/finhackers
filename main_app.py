@@ -10,7 +10,6 @@ queries in English and Hindi, escalating to a human agent when needed.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -18,7 +17,7 @@ import random
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, ValidationError, validator
@@ -78,6 +77,7 @@ INACTIVITY_MINUTES = int(os.getenv("INACTIVITY_MINUTES", "30"))
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID")
 WHATSAPP_FLOW_ID = os.getenv("WHATSAPP_FLOW_ID")
 WHATSAPP_FLOW_TOKEN = os.getenv("WHATSAPP_FLOW_TOKEN")
+WHATSAPP_FLOW_VERSION = os.getenv("WHATSAPP_FLOW_VERSION", "7.2")
 HUMAN_HANDOFF_QUEUE = os.getenv("HUMAN_HANDOFF_QUEUE", "payu-finance-support")
 DEFAULT_LANGUAGE = "en"
 
@@ -479,7 +479,7 @@ class CreditDecisionClient:
         self.base_url = base_url
         self.api_key = api_key
 
-    async def evaluate(self, application: LoanApplication) -> DecisionResult:
+    def evaluate(self, application: LoanApplication) -> DecisionResult:
         if not self.base_url:
             logger.info(
                 "Using offline decision rules for application %s", application.application_id
@@ -490,18 +490,18 @@ class CreditDecisionClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(
-                f"{self.base_url.rstrip('/')}/decisions",
-                json=application.dict(),
-                headers=headers,
+        response = requests.post(
+            f"{self.base_url.rstrip('/')}/decisions",
+            json=application.dict(),
+            headers=headers,
+            timeout=15,
+        )
+        if not response.ok:
+            logger.error(
+                "Decision service error (%s): %s", response.status_code, response.text
             )
-            if response.is_error:
-                logger.error(
-                    "Decision service error (%s): %s", response.status_code, response.text
-                )
-                response.raise_for_status()
-            payload = response.json()
+            response.raise_for_status()
+        payload = response.json()
         try:
             return DecisionResult(**payload)
         except ValidationError as exc:
@@ -578,7 +578,7 @@ class SupportAssistant:
         self.knowledge_base = knowledge_base
         self.threshold = threshold
 
-    async def answer(self, question: str, language: str) -> Tuple[Optional[str], float]:
+    def answer(self, question: str, language: str) -> Tuple[Optional[str], float]:
         normalized = question.strip().lower()
         best_score = 0.0
         best_answer: Optional[str] = None
@@ -633,7 +633,7 @@ class BedrockSupportResponder:
             body=body,
         )
 
-    async def answer(self, question: str, language: str, context: str) -> Optional[str]:
+    def answer(self, question: str, language: str, context: str) -> Optional[str]:
         if not self.enabled:
             return None
 
@@ -651,7 +651,7 @@ class BedrockSupportResponder:
             "temperature": 0.3,
         }
         try:
-            response = await asyncio.to_thread(self._invoke, json.dumps(payload))
+            response = self._invoke(json.dumps(payload))
             raw_body = response["body"].read()
             data = json.loads(raw_body.decode("utf-8"))
             if "output" in data:
@@ -669,7 +669,7 @@ class BedrockSupportResponder:
             logger.error("Bedrock response failed: %s", exc)
         return None
 
-    async def classify(self, question: str) -> Optional[str]:
+    def classify(self, question: str) -> Optional[str]:
         if not self.enabled:
             return None
         instructions = (
@@ -688,7 +688,7 @@ class BedrockSupportResponder:
             "temperature": 0,
         }
         try:
-            response = await asyncio.to_thread(self._invoke, json.dumps(payload))
+            response = self._invoke(json.dumps(payload))
             raw_body = response["body"].read()
             data = json.loads(raw_body.decode("utf-8"))
             text = None
@@ -726,24 +726,24 @@ support_agent = SupportAssistant(SUPPORT_KB)
 bedrock_responder = BedrockSupportResponder(BEDROCK_MODEL_ID, AWS_REGION)
 
 
-async def classify_post_disbursal_category(question: str) -> str:
+def classify_post_disbursal_category(question: str) -> str:
     if not bedrock_responder.enabled:
         return "Query"
-    label = await bedrock_responder.classify(question)
+    label = bedrock_responder.classify(question)
     return label or "Query"
 
 
 # ---------------------------------------------------------------------------
 # Chatbot orchestration
 # ---------------------------------------------------------------------------
-async def send_language_buttons(phone: str) -> None:
+def send_language_buttons(phone: str) -> None:
     english_pack = get_language_pack("en")
     buttons = [
         ("lang_en", english_pack["language_option_en"]),
         ("lang_hi", english_pack["language_option_hi"]),
     ]
     try:
-        await messenger.send_interactive_buttons(
+        messenger.send_interactive_buttons(
             phone,
             english_pack["language_prompt"],
             buttons,
@@ -754,10 +754,10 @@ async def send_language_buttons(phone: str) -> None:
             f"{english_pack['language_prompt']}\n\n"
             "If the buttons are hidden, reply with 1 for English or 2 for हिंदी."
         )
-        await messenger.send_text(phone, fallback)
+        messenger.send_text(phone, fallback)
 
 
-async def prompt_language(phone: str) -> None:
+def prompt_language(phone: str) -> None:
     english_pack = get_language_pack("en")
     hindi = LANGUAGE_PACKS["hi"]
     combined = (
@@ -766,14 +766,14 @@ async def prompt_language(phone: str) -> None:
         f"{hindi['welcome']}\n"
         f"{hindi['language_prompt']}"
     )
-    await messenger.send_text(phone, combined)
-    await send_language_buttons(phone)
+    messenger.send_text(phone, combined)
+    send_language_buttons(phone)
 
 
-async def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
+def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
     pack = get_language_pack(language)
     prompt_key = "intent_prompt_existing" if is_existing else "intent_prompt_new"
-    await messenger.send_interactive_buttons(
+    messenger.send_interactive_buttons(
         phone,
         pack[prompt_key],
         [
@@ -789,13 +789,13 @@ async def prompt_intent(phone: str, language: str, is_existing: bool) -> None:
     )
 
 
-async def start_onboarding(phone: str, state: ConversationState, language: str) -> None:
+def start_onboarding(phone: str, state: ConversationState, language: str) -> None:
     state.journey = "onboarding"
     state.answers.clear()
     state.awaiting_flow_completion = True
     pack = get_language_pack(language)
-    await messenger.send_text(phone, pack["onboarding_intro"])
-    await prompt_loan_flow(phone, language)
+    messenger.send_text(phone, pack["onboarding_intro"])
+    prompt_loan_flow(phone, language)
     record_interaction(
         phone,
         "system",
@@ -825,7 +825,7 @@ def validate_onboarding_answer(field: str, raw_value: Any) -> Any:
     return str(raw_value).strip()
 
 
-async def handle_form_submission(
+def handle_form_submission(
     phone: str,
     form_answers: Dict[str, Any],
     state: ConversationState,
@@ -838,16 +838,16 @@ async def handle_form_submission(
         try:
             state.answers[field_name] = validate_onboarding_answer(field_name, raw_value)
         except ValueError as exc:
-            await messenger.send_text(phone, str(exc))
+            messenger.send_text(phone, str(exc))
     required_fields = [item["field"] for item in ONBOARDING_FLOW]
     if all(field in state.answers for field in required_fields):
-        await finalize_onboarding(phone, state, language, profile)
+        finalize_onboarding(phone, state, language, profile)
         return
 
     missing = ", ".join(field for field in required_fields if field not in state.answers)
     logger.info("Form submission missing fields [%s] for %s", missing, phone)
-    await messenger.send_text(phone, "It looks like we still need a few details. Please reopen the form.")
-    await prompt_loan_flow(phone, language)
+    messenger.send_text(phone, "It looks like we still need a few details. Please reopen the form.")
+    prompt_loan_flow(phone, language)
     record_interaction(
         phone,
         "system",
@@ -856,7 +856,7 @@ async def handle_form_submission(
     )
 
 
-async def finalize_onboarding(
+def finalize_onboarding(
     phone: str,
     state: ConversationState,
     language: str,
@@ -875,7 +875,7 @@ async def finalize_onboarding(
         )
     except KeyError as exc:
         logger.error("Missing field before finalization: %s", exc)
-        await messenger.send_text(phone, "Let's collect that information again. Tap Apply to restart the loan journey.")
+        messenger.send_text(phone, "Let's collect that information again. Tap Apply to restart the loan journey.")
         state.reset(keep_language=True)
         return
 
@@ -887,8 +887,8 @@ async def finalize_onboarding(
     )
 
     pack = get_language_pack(language)
-    await messenger.send_text(phone, pack["decision_submit"])
-    decision = await decision_client.evaluate(application)
+    messenger.send_text(phone, pack["decision_submit"])
+    decision = decision_client.evaluate(application)
 
     profile.is_existing = True
     profile.stage = "borrower" if decision.approved else "prospect"
@@ -906,7 +906,7 @@ async def finalize_onboarding(
         )
     else:
         message = pack["decision_rejected"].format(reason=decision.reason or "of internal policies")
-    await messenger.send_text(phone, message)
+    messenger.send_text(phone, message)
     record_interaction(
         phone,
         "outbound",
@@ -920,12 +920,12 @@ async def finalize_onboarding(
             "reason": decision.reason,
         },
     )
-    await send_post_decision_options(phone, language)
+    send_post_decision_options(phone, language)
     state.awaiting_flow_completion = False
     state.reset(keep_language=True)
 
 
-async def handle_support(
+def handle_support(
     phone: str,
     text: str,
     state: ConversationState,
@@ -947,10 +947,10 @@ async def handle_support(
             f"- Next EMI: ₹{loan_context.get('next_emi_due')}\n"
         )
         combined_context = f"{context}{loan_snippet}"
-    bedrock_answer = await bedrock_responder.answer(text, language, combined_context)
+    bedrock_answer = bedrock_responder.answer(text, language, combined_context)
     if bedrock_answer:
-        await messenger.send_text(phone, bedrock_answer)
-        await messenger.send_text(phone, pack["support_closing"])
+        messenger.send_text(phone, bedrock_answer)
+        messenger.send_text(phone, pack["support_closing"])
         profile.metadata["last_support_query"] = text
         user_store.save(profile)
         record_interaction(
@@ -963,11 +963,11 @@ async def handle_support(
         state.reset(keep_language=True)
         return
 
-    answer, confidence = await support_agent.answer(text, language)
+    answer, confidence = support_agent.answer(text, language)
     if not answer or confidence < support_agent.threshold:
-        await messenger.send_text(phone, pack["support_handoff"])
-        await escalate_to_agent(phone, text, profile)
-        await messenger.send_text(phone, pack["support_escalation_ack"])
+        messenger.send_text(phone, pack["support_handoff"])
+        escalate_to_agent(phone, text, profile)
+        messenger.send_text(phone, pack["support_escalation_ack"])
         record_interaction(
             phone,
             "system",
@@ -978,8 +978,8 @@ async def handle_support(
         state.reset(keep_language=True)
         return
 
-    await messenger.send_text(phone, answer)
-    await messenger.send_text(phone, pack["support_closing"])
+    messenger.send_text(phone, answer)
+    messenger.send_text(phone, pack["support_closing"])
     profile.metadata["last_support_query"] = text
     user_store.save(profile)
     record_interaction(
@@ -992,7 +992,7 @@ async def handle_support(
     state.reset(keep_language=True)
 
 
-async def handle_support_shortcut(
+def handle_support_shortcut(
     phone: str,
     language: str,
     profile: UserProfile,
@@ -1003,8 +1003,8 @@ async def handle_support_shortcut(
     entry = SUPPORT_KB[shortcut_id]
     pack = get_language_pack(language)
     answer = entry["a"].get(language) or entry["a"]["en"]
-    await messenger.send_text(phone, answer)
-    await messenger.send_text(phone, pack["support_closing"])
+    messenger.send_text(phone, answer)
+    messenger.send_text(phone, pack["support_closing"])
     profile.metadata["last_support_query"] = entry["q"].get(language) or entry["q"]["en"]
     user_store.save(profile)
     record_interaction(
@@ -1015,12 +1015,12 @@ async def handle_support_shortcut(
     )
 
 
-async def handle_post_disbursal(phone: str, language: str, normalized_query: str) -> None:
+def handle_post_disbursal(phone: str, language: str, normalized_query: str) -> None:
     record = loan_store.get_record(phone)
     pack = get_language_pack(language)
     if not record:
-        await messenger.send_text(phone, pack["support_handoff"])
-        await escalate_to_agent(phone, "No loan record found", user_store.get(phone))
+        messenger.send_text(phone, pack["support_handoff"])
+        escalate_to_agent(phone, "No loan record found", user_store.get(phone))
         return
 
     payload = {
@@ -1032,7 +1032,7 @@ async def handle_post_disbursal(phone: str, language: str, normalized_query: str
         "status": record.get("status"),
         "documents_url": record.get("documents_url"),
     }
-    category_label = await classify_post_disbursal_category(normalized_query)
+    category_label = classify_post_disbursal_category(normalized_query)
     record_interaction(
         phone,
         "system",
@@ -1068,7 +1068,7 @@ async def handle_post_disbursal(phone: str, language: str, normalized_query: str
     else:
         response = pack["support_closing"]
 
-    await messenger.send_text(phone, response)
+    messenger.send_text(phone, response)
     record_interaction(
         phone,
         "outbound",
@@ -1077,7 +1077,7 @@ async def handle_post_disbursal(phone: str, language: str, normalized_query: str
     )
 
 
-async def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> None:
+def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> None:
     logger.info(
         "Escalating to human agent: phone=%s question=%s queue=%s",
         phone,
@@ -1098,10 +1098,10 @@ async def escalate_to_agent(phone: str, question: str, profile: UserProfile) -> 
     )
 
 
-async def send_dropoff_message(phone: str, language: str) -> None:
+def send_dropoff_message(phone: str, language: str) -> None:
     pack = get_language_pack(language)
-    await messenger.send_text(phone, pack["dropoff"])
-    await messenger.send_text(phone, pack["resume_prompt"])
+    messenger.send_text(phone, pack["dropoff"])
+    messenger.send_text(phone, pack["resume_prompt"])
     record_interaction(
         phone,
         "outbound",
@@ -1120,18 +1120,26 @@ def record_interaction(
     interaction_store.put(phone, direction, category, payload)
 
 
-async def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, str]] = None) -> None:
+def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, str]] = None) -> None:
     pack = pack or get_language_pack(language)
     if not WHATSAPP_FLOW_ID:
-        await messenger.send_text(phone, "Loan form is currently unavailable. Please try again later.")
+        messenger.send_text(phone, "Loan form is currently unavailable. Please try again later.")
         return
     try:
-        await messenger.send_flow(phone, language, WHATSAPP_FLOW_ID, WHATSAPP_FLOW_TOKEN)
+        messenger.send_flow(
+            phone,
+            language,
+            WHATSAPP_FLOW_ID,
+            WHATSAPP_FLOW_TOKEN,
+            flow_cta=pack["flow_button_label"],
+            flow_version=WHATSAPP_FLOW_VERSION,
+            entry_screen="loan_form",
+        )
     except Exception as exc:  # pragma: no cover - flow failures
         logger.warning("Failed to send WhatsApp flow: %s", exc)
-        await messenger.send_text(phone, "I'm having trouble opening the form. Please try again in a moment.")
+        messenger.send_text(phone, "I'm having trouble opening the form. Please try again in a moment.")
         return
-    await messenger.send_interactive_buttons(
+    messenger.send_interactive_buttons(
         phone,
         pack["flow_sent"],
         [
@@ -1147,9 +1155,9 @@ async def prompt_loan_flow(phone: str, language: str, pack: Optional[Dict[str, s
     )
 
 
-async def prompt_support_menu(phone: str, language: str) -> None:
+def prompt_support_menu(phone: str, language: str) -> None:
     pack = get_language_pack(language)
-    await messenger.send_interactive_buttons(
+    messenger.send_interactive_buttons(
         phone,
         pack["support_menu_intro"],
         [
@@ -1158,7 +1166,7 @@ async def prompt_support_menu(phone: str, language: str) -> None:
             ("support_docs", pack["support_btn_docs"]),
         ],
     )
-    await messenger.send_interactive_buttons(
+    messenger.send_interactive_buttons(
         phone,
         pack["support_menu_intro_secondary"],
         [
@@ -1166,7 +1174,7 @@ async def prompt_support_menu(phone: str, language: str) -> None:
             ("support_btn_agent", pack["support_btn_agent"]),
         ],
     )
-    await messenger.send_text(phone, pack["support_text_hint"])
+    messenger.send_text(phone, pack["support_text_hint"])
     record_interaction(
         phone,
         "outbound",
@@ -1175,9 +1183,9 @@ async def prompt_support_menu(phone: str, language: str) -> None:
     )
 
 
-async def send_post_decision_options(phone: str, language: str) -> None:
+def send_post_decision_options(phone: str, language: str) -> None:
     pack = get_language_pack(language)
-    await messenger.send_interactive_buttons(
+    messenger.send_interactive_buttons(
         phone,
         pack["ask_more_help"],
         [
@@ -1217,7 +1225,7 @@ def extract_button_reply_id(message: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-async def handle_incoming_message(message: Dict[str, Any]) -> None:
+def handle_incoming_message(message: Dict[str, Any]) -> None:
     phone = message.get("from")
     if not phone:
         return
@@ -1269,7 +1277,7 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
             conversation_state.awaiting_support_details = False
             conversation_state.awaiting_flow_completion = False
             conversation_state.language_prompted = False
-            await prompt_language(phone)
+            prompt_language(phone)
             return
 
         if form_answers:
@@ -1284,7 +1292,7 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
                 logger.exception("Failed to record flow submission: phone=%s error=%s", phone, exc)
             conversation_state.language = language
             conversation_state.journey = "onboarding"
-            await handle_form_submission(phone, form_answers, conversation_state, language, profile)
+            handle_form_submission(phone, form_answers, conversation_state, language, profile)
             return
 
         if conversation_state.language is None:
@@ -1302,47 +1310,47 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
                 conversation_state.language = lang_choice
                 conversation_state.language_prompted = False
                 profile.language = lang_choice
-                await prompt_intent(phone, lang_choice, profile.is_existing)
+                prompt_intent(phone, lang_choice, profile.is_existing)
                 return
 
             if not conversation_state.language_prompted:
-                await prompt_language(phone)
+                prompt_language(phone)
                 conversation_state.language_prompted = True
             else:
                 reminder_pack = get_language_pack("en")
-                await messenger.send_text(phone, reminder_pack["invalid_language"])
-                await send_language_buttons(phone)
+                messenger.send_text(phone, reminder_pack["invalid_language"])
+                send_language_buttons(phone)
             return
 
         language = conversation_state.language
         pack = get_language_pack(language)
 
         if minutes_since(previous_activity) > INACTIVITY_MINUTES and conversation_state.journey:
-            await send_dropoff_message(phone, language)
+            send_dropoff_message(phone, language)
             conversation_state.journey = None
             conversation_state.answers.clear()
             conversation_state.awaiting_flow_completion = False
             conversation_state.awaiting_support_details = False
 
         if reply_id == "flow_open":
-            await prompt_loan_flow(phone, language, pack)
+            prompt_loan_flow(phone, language, pack)
             return
         if reply_id == "intent_apply":
-            await start_onboarding(phone, conversation_state, language)
+            start_onboarding(phone, conversation_state, language)
             return
         if reply_id == "intent_support":
             conversation_state.journey = "support"
             conversation_state.awaiting_flow_completion = False
             conversation_state.awaiting_support_details = True
             conversation_state.answers.clear()
-            await messenger.send_text(
+            messenger.send_text(
                 phone,
                 pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
             )
-            await prompt_support_menu(phone, language)
+            prompt_support_menu(phone, language)
             return
         if reply_id == "post_accept":
-            await messenger.send_text(phone, pack["accept_ack"])
+            messenger.send_text(phone, pack["accept_ack"])
             try:
                 record_interaction(
                     phone,
@@ -1354,22 +1362,22 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
                 logger.exception("Failed to log post_accept button: phone=%s error=%s", phone, exc)
             return
         if reply_id and reply_id in SUPPORT_SHORTCUTS:
-            await handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
+            handle_support_shortcut(phone, language, profile, SUPPORT_SHORTCUTS[reply_id])
             conversation_state.reset(keep_language=True)
             return
         if reply_id == "support_btn_agent":
-            await messenger.send_text(phone, pack["support_handoff"])
-            await escalate_to_agent(phone, "Agent requested", profile)
-            await messenger.send_text(phone, pack["support_escalation_ack"])
+            messenger.send_text(phone, pack["support_handoff"])
+            escalate_to_agent(phone, "Agent requested", profile)
+            messenger.send_text(phone, pack["support_escalation_ack"])
             conversation_state.reset(keep_language=True)
             return
 
         if not text:
-            await messenger.send_text(phone, pack["text_only_warning"])
+            messenger.send_text(phone, pack["text_only_warning"])
             return
 
         if normalized in {"accept", "accepted", "accept offer"}:
-            await messenger.send_text(phone, pack["accept_ack"])
+            messenger.send_text(phone, pack["accept_ack"])
             try:
                 record_interaction(
                     phone,
@@ -1384,22 +1392,22 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
         if conversation_state.journey is None:
             intent = intent_from_text(normalized)
             if intent == "apply":
-                await start_onboarding(phone, conversation_state, language)
+                start_onboarding(phone, conversation_state, language)
                 return
             if intent == "support":
                 conversation_state.journey = "support"
                 conversation_state.awaiting_support_details = True
                 conversation_state.answers.clear()
-                await messenger.send_text(
+                messenger.send_text(
                     phone,
                     pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
                 )
-                await prompt_support_menu(phone, language)
+                prompt_support_menu(phone, language)
                 return
             if intent == "post_disbursal" and loan_store.get_record(phone):
-                await handle_post_disbursal(phone, language, normalized)
+                handle_post_disbursal(phone, language, normalized)
                 return
-            await prompt_intent(phone, language, profile.is_existing)
+            prompt_intent(phone, language, profile.is_existing)
             return
 
         if conversation_state.journey == "onboarding":
@@ -1408,32 +1416,32 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
                 conversation_state.awaiting_flow_completion = False
                 conversation_state.awaiting_support_details = True
                 conversation_state.answers.clear()
-                await messenger.send_text(
+                messenger.send_text(
                     phone,
                     pack["support_prompt_existing" if profile.is_existing else "support_prompt_new"],
                 )
-                await prompt_support_menu(phone, language)
+                prompt_support_menu(phone, language)
                 return
             if conversation_state.awaiting_flow_completion:
-                await messenger.send_text(phone, pack["flow_sent"])
-                await prompt_loan_flow(phone, language, pack)
+                messenger.send_text(phone, pack["flow_sent"])
+                prompt_loan_flow(phone, language, pack)
             else:
-                await messenger.send_text(phone, pack["fallback_intent"])
+                messenger.send_text(phone, pack["fallback_intent"])
             return
 
         if conversation_state.journey == "support":
             if normalized in {"apply", "loan"}:
-                await start_onboarding(phone, conversation_state, language)
+                start_onboarding(phone, conversation_state, language)
                 return
             if normalized in {"support", "help"}:
-                await prompt_support_menu(phone, language)
+                prompt_support_menu(phone, language)
                 conversation_state.awaiting_support_details = True
                 return
             if loan_store.get_record(phone) and normalized in {"balance", "emi", "statement", "docs", "document", "repayment"}:
-                await handle_post_disbursal(phone, language, normalized)
+                handle_post_disbursal(phone, language, normalized)
                 return
             conversation_state.awaiting_support_details = True
-            await handle_support(phone, text, conversation_state, language, profile)
+            handle_support(phone, text, conversation_state, language, profile)
     except Exception as exc:
         logger.exception("Failed to handle message for phone=%s error=%s", phone, exc)
     finally:
@@ -1447,7 +1455,7 @@ async def handle_incoming_message(message: Dict[str, Any]) -> None:
 # FastAPI endpoints
 # ---------------------------------------------------------------------------
 @app.get("/webhook")
-async def verify_webhook(
+def verify_webhook(
     hub_mode: Optional[str] = Query(default=None, alias="hub.mode"),
     hub_verify_token: Optional[str] = Query(default=None, alias="hub.verify_token"),
     hub_challenge: Optional[str] = Query(default=None, alias="hub.challenge"),
@@ -1460,11 +1468,12 @@ async def verify_webhook(
 
 
 @app.post("/webhook")
-async def receive_webhook(payload: Dict[str, Any]):
+def receive_webhook(payload: Dict[str, Any]):
     messages = extract_messages(payload)
     if not messages:
         return JSONResponse({"status": "ignored"})
-    await asyncio.gather(*(handle_incoming_message(msg) for msg in messages))
+    for msg in messages:
+        handle_incoming_message(msg)
     return JSONResponse({"status": "processed"})
 
 
@@ -1483,7 +1492,7 @@ def extract_messages(body: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 @app.get("/healthz")
-async def healthcheck():
+def healthcheck():
     return {
         "status": "ok",
         "messenger_enabled": messenger.enabled,
